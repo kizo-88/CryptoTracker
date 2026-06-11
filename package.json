@@ -1,0 +1,16 @@
+{
+  "name": "cryptotracker",
+  "version": "2.0.0",
+  "description": "Crypto market + Polymarket scanner with TA signal engine (entry/TP/SL) and terminal-style web dashboard",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

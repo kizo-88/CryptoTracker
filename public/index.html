@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CryptoTracker Terminal</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+  <header id="topbar">
+    <div class="brand">CRYPTO<span>TRACKER</span> <em>TERMINAL</em></div>
+    <div id="global-stats" class="global-stats">loading global data…</div>
+    <div id="clock" class="clock"></div>
+  </header>
+
+  <main id="layout">
+    <!-- LEFT: market scanner -->
+    <section id="scanner" class="panel">
+      <div class="panel-title">MARKET SCANNER <span id="scan-count"></span></div>
+      <input id="search" type="text" placeholder="search coin…" autocomplete="off" />
+      <div class="scanner-head">
+        <span>ASSET</span><span>PRICE</span><span>24H</span><span>SIG</span>
+      </div>
+      <div id="coin-list" class="coin-list">
+        <div class="loading">scanning market…</div>
+      </div>
+    </section>
+
+    <!-- CENTER: chart + signal -->
+    <section id="main" class="panel">
+      <div class="chart-header">
+        <div id="coin-title" class="coin-title">BTC / USDT</div>
+        <div class="tf-buttons">
+          <button data-tf="1h">1H</button>
+          <button data-tf="4h" class="active">4H</button>
+          <button data-tf="1d">1D</button>
+        </div>
+        <div id="chart-source" class="chart-source"></div>
+      </div>
+      <div id="chart"></div>
+      <div id="signal-card" class="signal-card">
+        <div class="loading">select a coin to analyse…</div>
+      </div>
+    </section>
+
+    <!-- RIGHT: analysis + polymarket -->
+    <section id="side" class="panel-col">
+      <div class="panel">
+        <div class="panel-title">TECHNICAL ANALYSIS</div>
+        <div id="analysis" class="analysis"><div class="loading">–</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">POLYMARKET <span class="sub">prediction markets</span></div>
+        <div class="pm-tabs">
+          <button id="pm-tab-crypto" class="active">CRYPTO</button>
+          <button id="pm-tab-trending">TRENDING</button>
+        </div>
+        <div id="polymarket" class="pm-list"><div class="loading">loading markets…</div></div>
+      </div>
+    </section>
+  </main>
+
+  <footer id="disclaimer">
+    ⚠ Signals are algorithmic technical analysis, not financial advice. Always do your own research and manage risk.
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
