@@ -16,10 +16,19 @@ TradingView-style charts with **entry / stop-loss / take-profit** levels.
 - **Charts** — lightweight-charts candlesticks with EMA overlays, 1H / 4H / 1D
   timeframes. Klines from Binance public API with CoinGecko OHLC fallback.
 - **Polymarket** — live prediction markets via the public Gamma API, with a
-  crypto-related filter and trending tab (implied probabilities + 24h volume).
+  crypto-related filter and trending tab. Every market shows **all outcome
+  options** with implied-probability bars and 24h volume.
+- **Account connections** (CONNECT button in the header):
+  - **MEXC** — spot balances with USD estimates via signed API (use a
+    read-only key; keys are held in server memory only, or set
+    `MEXC_API_KEY` / `MEXC_API_SECRET` in `.env`).
+  - **Phantom** — Solana wallet connect via the browser extension, shows
+    address + SOL balance.
+  - **Polymarket** — paste your Polygon wallet address to see portfolio
+    value, open positions and PnL (public data API, read-only).
 - **Global stats bar** — total market cap, 24h volume, BTC/ETH dominance.
 
-No API keys required — all data sources are free public endpoints.
+No API keys required for market data — all sources are free public endpoints.
 
 ## Run locally
 
@@ -36,6 +45,9 @@ npm start          # http://localhost:3000
 | `GET /api/global` | Global market stats |
 | `GET /api/signal?binance=BTCUSDT&id=bitcoin&interval=4h` | Candles + indicators + signal with entry/TP/SL |
 | `GET /api/polymarket` | Polymarket crypto + trending markets |
+| `GET /api/polymarket/positions?address=0x…` | Polymarket account positions + PnL |
+| `POST /api/connect/mexc` | Connect MEXC (`{key, secret}`, kept in memory) |
+| `GET /api/mexc/account` | MEXC spot balances with USD estimates |
 
 ## Disclaimer
 

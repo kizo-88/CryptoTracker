@@ -1,6 +1,7 @@
 const express = require('express');
 const market = require('../services/market');
 const polymarket = require('../services/polymarket');
+const mexc = require('../services/mexc');
 const { buildSignal } = require('../services/signals');
 
 const router = express.Router();
@@ -38,5 +39,52 @@ router.get(
 
 // Polymarket prediction markets (crypto-related + overall trending)
 router.get('/polymarket', handle(() => polymarket.getMarkets()));
+
+// Polymarket account positions (public data API, keyed by wallet address)
+router.get(
+  '/polymarket/positions',
+  handle((req) => polymarket.getPositions((req.query.address || '').trim()))
+);
+
+// --- MEXC account (read-only; keys held in server memory) ---
+router.get('/mexc/status', handle(async () => ({ connected: mexc.isConnected() })));
+
+router.post(
+  '/connect/mexc',
+  handle(async (req) => {
+    const { key, secret } = req.body || {};
+    if (!key || !secret) throw new Error('key and secret are required');
+    mexc.setCreds(key, secret);
+    try {
+      const account = await mexc.getAccount(); // validates the credentials
+      return { connected: true, ...account };
+    } catch (err) {
+      mexc.disconnect();
+      throw err;
+    }
+  })
+);
+
+router.post('/disconnect/mexc', handle(async () => { mexc.disconnect(); return { connected: false }; }));
+
+router.get(
+  '/mexc/account',
+  handle(async () => {
+    const account = await mexc.getAccount();
+    // enrich with USD estimates from the scanner's live prices
+    const prices = new Map();
+    try {
+      for (const c of await market.getScan()) if (!prices.has(c.symbol)) prices.set(c.symbol, c.price);
+    } catch { /* estimates are best-effort */ }
+    prices.set('USDT', 1).set('USDC', 1);
+    let totalUsd = 0;
+    for (const b of account.balances) {
+      b.usdValue = prices.has(b.asset) ? +(b.total * prices.get(b.asset)).toFixed(2) : null;
+      if (b.usdValue) totalUsd += b.usdValue;
+    }
+    account.balances.sort((a, b) => (b.usdValue ?? 0) - (a.usdValue ?? 0));
+    return { ...account, totalUsd: +totalUsd.toFixed(2) };
+  })
+);
 
 module.exports = router;

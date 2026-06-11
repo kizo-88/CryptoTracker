@@ -24,19 +24,26 @@ function mapMarket(m) {
     volume24h: m.volume24hr != null ? +m.volume24hr : null,
     liquidity: m.liquidity != null ? +m.liquidity : null,
     endDate: m.endDate || null,
-    isCrypto: CRYPTO_RE.test(`${m.question} ${m.slug}`),
+    // "vs" guard: skips sports matchups that happen to contain a crypto word
+    // (e.g. tennis player "Solana Sierra")
+    isCrypto: CRYPTO_RE.test(`${m.question} ${m.slug}`) && !/\bvs\.?\b/i.test(m.question || ''),
   };
 }
 
 async function getMarkets() {
   return cached('polymarket', 120_000, async () => {
-    const res = await fetch(
-      `${GAMMA}/markets?closed=false&active=true&limit=100&order=volume24hr&ascending=false`,
-      { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(12000) }
+    // paginate a few pages so the crypto filter has enough markets to find
+    const pages = await Promise.all(
+      [0, 100, 200].map(async (offset) => {
+        const res = await fetch(
+          `${GAMMA}/markets?closed=false&active=true&limit=100&offset=${offset}&order=volume24hr&ascending=false`,
+          { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(12000) }
+        );
+        if (!res.ok) throw new Error(`Polymarket HTTP ${res.status}`);
+        return res.json();
+      })
     );
-    if (!res.ok) throw new Error(`Polymarket HTTP ${res.status}`);
-    const raw = await res.json();
-    const markets = raw.map(mapMarket).filter((m) => m.outcomes.length >= 2);
+    const markets = pages.flat().map(mapMarket).filter((m) => m.outcomes.length >= 2);
     return {
       crypto: markets.filter((m) => m.isCrypto).slice(0, 15),
       trending: markets.slice(0, 15),
@@ -45,4 +52,46 @@ async function getMarkets() {
   });
 }
 
-module.exports = { getMarkets };
+// Public read-only account data keyed by the user's Polymarket (Polygon)
+// wallet address — no auth needed.
+const DATA_API = 'https://data-api.polymarket.com';
+
+async function fetchJson(url) {
+  const res = await fetch(url, {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(12000),
+  });
+  if (!res.ok) throw new Error(`Polymarket data HTTP ${res.status}`);
+  return res.json();
+}
+
+async function getPositions(address) {
+  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+    throw new Error('invalid wallet address — expected 0x… Polygon address');
+  }
+  const key = `pm-positions:${address.toLowerCase()}`;
+  return cached(key, 60_000, async () => {
+    const [positions, value] = await Promise.all([
+      fetchJson(`${DATA_API}/positions?user=${address}&sizeThreshold=0.1&limit=50&sortBy=CURRENT&sortDirection=DESC`),
+      fetchJson(`${DATA_API}/value?user=${address}`).catch(() => null),
+    ]);
+    const portfolioValue = Array.isArray(value) ? value[0]?.value : value?.value;
+    return {
+      address,
+      portfolioValue: portfolioValue != null ? +portfolioValue : null,
+      positions: (positions || []).map((p) => ({
+        title: p.title,
+        outcome: p.outcome,
+        size: p.size != null ? +p.size : null,
+        avgPrice: p.avgPrice != null ? +p.avgPrice : null,
+        curPrice: p.curPrice != null ? +p.curPrice : null,
+        currentValue: p.currentValue != null ? +p.currentValue : null,
+        cashPnl: p.cashPnl != null ? +p.cashPnl : null,
+        percentPnl: p.percentPnl != null ? +p.percentPnl : null,
+        slug: p.slug || null,
+      })),
+    };
+  });
+}
+
+module.exports = { getMarkets, getPositions };

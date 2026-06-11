@@ -237,26 +237,30 @@ function renderPolymarket() {
   if (!state.pmData) return;
   const items = state.pmData[state.pmTab] || [];
   if (!items.length) {
-    $('#polymarket').innerHTML = '<div class="loading">no markets found</div>';
+    $('#polymarket').innerHTML = `<div class="loading">no active ${state.pmTab} markets right now${state.pmTab === 'crypto' ? ' — check the TRENDING tab' : ''}</div>`;
     return;
   }
   $('#polymarket').innerHTML = items
     .map((m) => {
-      const yes = m.outcomes[0];
-      const yesPct = yes?.price != null ? Math.round(yes.price * 100) : null;
-      const outs = m.outcomes
-        .slice(0, 2)
+      // every option of the market, sorted by implied probability
+      const opts = [...m.outcomes]
+        .sort((a, b) => (b.price ?? 0) - (a.price ?? 0))
+        .slice(0, 6)
         .map((o) => {
-          const p = o.price != null ? (o.price * 100).toFixed(0) + '%' : '–';
-          const cls = o.price != null && o.price >= 0.5 ? 'hi' : 'lo';
-          return `<span class="pm-out">${o.name} <b class="${cls}">${p}</b></span>`;
+          const pctNum = o.price != null ? o.price * 100 : null;
+          return `
+          <div class="pm-opt">
+            <span class="nm" title="${o.name}">${o.name}</span>
+            <span class="bar"><i class="${pctNum != null && pctNum < 50 ? 'lo' : ''}" style="width:${pctNum ?? 0}%"></i></span>
+            <span class="pc">${pctNum != null ? pctNum.toFixed(0) + '%' : '–'}</span>
+          </div>`;
         })
         .join('');
+      const more = m.outcomes.length > 6 ? `<div class="pm-meta">+${m.outcomes.length - 6} more options</div>` : '';
       return `
       <div class="pm-item">
         <div class="pm-q"><a href="${m.url}" target="_blank" rel="noopener">${m.question}</a></div>
-        <div class="pm-outcomes">${outs}</div>
-        ${yesPct != null ? `<div class="pm-bar"><i style="width:${yesPct}%"></i></div>` : ''}
+        ${opts}${more}
         <div class="pm-meta">vol24h $${fmtBig(m.volume24h)} ${m.endDate ? '· ends ' + new Date(m.endDate).toLocaleDateString() : ''}</div>
       </div>`;
     })
@@ -275,6 +279,170 @@ $('#pm-tab-trending').addEventListener('click', () => {
   $('#pm-tab-crypto').classList.remove('active');
   renderPolymarket();
 });
+
+/* ---------------- accounts modal ---------------- */
+const connections = { mexc: false, phantom: false, polymarket: false };
+
+function updateConnCount() {
+  const n = Object.values(connections).filter(Boolean).length;
+  $('#conn-count').textContent = n ? `(${n})` : '';
+}
+
+$('#btn-connect').addEventListener('click', () => $('#modal-overlay').classList.remove('hidden'));
+$('#modal-close').addEventListener('click', () => $('#modal-overlay').classList.add('hidden'));
+$('#modal-overlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) $('#modal-overlay').classList.add('hidden');
+});
+
+/* ----- MEXC ----- */
+function renderMexcAccount(acct) {
+  connections.mexc = true;
+  $('#mexc-dot').className = 'dot on';
+  $('#mexc-form').style.display = 'none';
+  updateConnCount();
+  const rows = acct.balances
+    .slice(0, 12)
+    .map(
+      (b) => `<tr><td>${b.asset}</td><td>${b.total}</td>
+        <td>${b.usdValue != null ? '$' + b.usdValue.toLocaleString() : '–'}</td></tr>`
+    )
+    .join('');
+  $('#mexc-result').innerHTML = `
+    ${acct.totalUsd != null ? `<div class="total-line">EST. TOTAL $${acct.totalUsd.toLocaleString()}</div>` : ''}
+    <table class="bal-table"><tr><th>ASSET</th><th>BALANCE</th><th>USD</th></tr>${rows}</table>
+    ${acct.balances.length > 12 ? `<div class="hint">+${acct.balances.length - 12} more assets</div>` : ''}
+    <div class="acct-row"><button id="mexc-disconnect" class="btn-go" style="background:var(--red)">DISCONNECT</button></div>`;
+  $('#mexc-disconnect').addEventListener('click', async () => {
+    await fetch('/api/disconnect/mexc', { method: 'POST' });
+    connections.mexc = false;
+    $('#mexc-dot').className = 'dot off';
+    $('#mexc-form').style.display = '';
+    $('#mexc-result').innerHTML = '';
+    updateConnCount();
+  });
+}
+
+$('#mexc-connect').addEventListener('click', async () => {
+  const key = $('#mexc-key').value.trim();
+  const secret = $('#mexc-secret').value.trim();
+  if (!key || !secret) {
+    $('#mexc-result').innerHTML = '<span class="err">enter both API key and secret</span>';
+    return;
+  }
+  $('#mexc-connect').disabled = true;
+  $('#mexc-result').innerHTML = 'connecting…';
+  try {
+    const res = await fetch('/api/connect/mexc', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ key, secret }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    $('#mexc-key').value = '';
+    $('#mexc-secret').value = '';
+    const acct = await (await fetch('/api/mexc/account')).json();
+    if (acct.error) throw new Error(acct.error);
+    renderMexcAccount(acct);
+  } catch (err) {
+    $('#mexc-result').innerHTML = `<span class="err">⚠ ${err.message}</span>`;
+  } finally {
+    $('#mexc-connect').disabled = false;
+  }
+});
+
+// reconnect silently if the server still holds keys (e.g. from .env)
+(async () => {
+  try {
+    const st = await (await fetch('/api/mexc/status')).json();
+    if (st.connected) {
+      const acct = await (await fetch('/api/mexc/account')).json();
+      if (!acct.error) renderMexcAccount(acct);
+    }
+  } catch { /* stay disconnected */ }
+})();
+
+/* ----- Phantom (Solana browser wallet) ----- */
+async function fetchSolBalance(pubkey) {
+  const res = await fetch('https://api.mainnet-beta.solana.com', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getBalance', params: [pubkey] }),
+  });
+  const data = await res.json();
+  return data?.result?.value != null ? data.result.value / 1e9 : null;
+}
+
+async function phantomConnect(onlyIfTrusted) {
+  const provider = window.phantom?.solana;
+  if (!provider?.isPhantom) {
+    if (!onlyIfTrusted) {
+      $('#phantom-result').innerHTML =
+        '<span class="err">⚠ Phantom extension not detected — install it from <a href="https://phantom.app" target="_blank" rel="noopener" style="color:var(--blue)">phantom.app</a> and reload</span>';
+    }
+    return;
+  }
+  try {
+    const resp = await provider.connect(onlyIfTrusted ? { onlyIfTrusted: true } : undefined);
+    const pubkey = resp.publicKey.toString();
+    connections.phantom = true;
+    $('#phantom-dot').className = 'dot on';
+    updateConnCount();
+    $('#phantom-result').innerHTML = `<div class="total-line">${pubkey.slice(0, 6)}…${pubkey.slice(-6)}</div><div>SOL balance: loading…</div>`;
+    const sol = await fetchSolBalance(pubkey);
+    $('#phantom-result').innerHTML = `
+      <div class="total-line">${pubkey.slice(0, 6)}…${pubkey.slice(-6)}</div>
+      <div>SOL balance: <b>${sol != null ? sol.toFixed(4) + ' SOL' : 'unavailable (RPC limit)'}</b></div>`;
+  } catch (err) {
+    if (!onlyIfTrusted) $('#phantom-result').innerHTML = `<span class="err">⚠ ${err.message}</span>`;
+  }
+}
+
+$('#phantom-connect').addEventListener('click', () => phantomConnect(false));
+phantomConnect(true); // silent auto-reconnect if previously approved
+
+/* ----- Polymarket account ----- */
+async function loadPolymarketAccount(address) {
+  $('#pm-result').innerHTML = 'loading positions…';
+  try {
+    const data = await (await fetch(`/api/polymarket/positions?address=${encodeURIComponent(address)}`)).json();
+    if (data.error) throw new Error(data.error);
+    connections.polymarket = true;
+    $('#pm-dot').className = 'dot on';
+    updateConnCount();
+    localStorage.setItem('pmAddress', address);
+    const items = data.positions
+      .slice(0, 10)
+      .map((p) => {
+        const pnlCls = (p.cashPnl ?? 0) >= 0 ? 'up' : 'down';
+        return `
+        <div class="pos-item">
+          <div class="pos-title">${p.title} — <b>${p.outcome}</b></div>
+          <div class="pos-meta">
+            <span>size ${p.size?.toFixed(1) ?? '–'}</span>
+            <span>avg ${(p.avgPrice * 100).toFixed(0)}¢ → now ${(p.curPrice * 100).toFixed(0)}¢</span>
+            <span>value $${p.currentValue?.toFixed(2) ?? '–'}</span>
+            <span class="${pnlCls}">PnL ${p.cashPnl >= 0 ? '+' : ''}$${p.cashPnl?.toFixed(2)} (${p.percentPnl?.toFixed(1)}%)</span>
+          </div>
+        </div>`;
+      })
+      .join('');
+    $('#pm-result').innerHTML = `
+      ${data.portfolioValue != null ? `<div class="total-line">PORTFOLIO VALUE $${data.portfolioValue.toLocaleString()}</div>` : ''}
+      ${items || '<div class="hint">no open positions on this address</div>'}`;
+  } catch (err) {
+    $('#pm-result').innerHTML = `<span class="err">⚠ ${err.message}</span>`;
+  }
+}
+
+$('#pm-connect').addEventListener('click', () => {
+  const address = $('#pm-address').value.trim();
+  if (address) loadPolymarketAccount(address);
+});
+if (localStorage.getItem('pmAddress')) {
+  $('#pm-address').value = localStorage.getItem('pmAddress');
+  loadPolymarketAccount(localStorage.getItem('pmAddress'));
+}
 
 /* ---------------- boot ---------------- */
 initChart();

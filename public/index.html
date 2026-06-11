@@ -13,7 +13,7 @@
   <header id="topbar">
     <div class="brand"><img src="asset/terminal.png" alt="" class="brand-icon" />CRYPTO<span>TRACKER</span> <em>TERMINAL</em></div>
     <div id="global-stats" class="global-stats">loading global data…</div>
-    <div class="user-badge"><img src="asset/user.png" alt="" />TRADER</div>
+    <button id="btn-connect" class="user-badge"><img src="asset/user.png" alt="" />CONNECT <span id="conn-count"></span></button>
     <div id="clock" class="clock"></div>
   </header>
 
@@ -67,6 +67,48 @@
   <footer id="disclaimer">
     <img src="asset/shield.png" alt="" /> Signals are algorithmic technical analysis, not financial advice. Always do your own research and manage risk.
   </footer>
+
+  <!-- ACCOUNTS modal -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <span><img src="asset/user.png" alt="" class="icon" /> CONNECT ACCOUNTS</span>
+        <button id="modal-close">✕</button>
+      </div>
+
+      <div class="acct-section">
+        <div class="acct-title"><img src="asset/wallet.png" alt="" /> MEXC EXCHANGE <span id="mexc-dot" class="dot off"></span></div>
+        <div id="mexc-form" class="acct-form">
+          <input id="mexc-key" type="password" placeholder="API key (read-only recommended)" autocomplete="off" />
+          <input id="mexc-secret" type="password" placeholder="API secret" autocomplete="off" />
+          <div class="acct-row">
+            <button id="mexc-connect" class="btn-go">CONNECT</button>
+            <span class="hint">keys stay in server memory only — create a read-only key in MEXC › API Management</span>
+          </div>
+        </div>
+        <div id="mexc-result" class="acct-result"></div>
+      </div>
+
+      <div class="acct-section">
+        <div class="acct-title"><img src="asset/safe.png" alt="" /> PHANTOM WALLET <span id="phantom-dot" class="dot off"></span></div>
+        <div class="acct-row">
+          <button id="phantom-connect" class="btn-go">CONNECT PHANTOM</button>
+          <span class="hint">requires the Phantom browser extension (Solana)</span>
+        </div>
+        <div id="phantom-result" class="acct-result"></div>
+      </div>
+
+      <div class="acct-section">
+        <div class="acct-title"><img src="asset/pie_2.png" alt="" /> POLYMARKET ACCOUNT <span id="pm-dot" class="dot off"></span></div>
+        <div class="acct-row">
+          <input id="pm-address" type="text" placeholder="0x… your Polymarket wallet (Polygon) address" autocomplete="off" />
+          <button id="pm-connect" class="btn-go">LOAD</button>
+        </div>
+        <div class="hint">read-only: positions &amp; PnL come from Polymarket's public data API</div>
+        <div id="pm-result" class="acct-result"></div>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
