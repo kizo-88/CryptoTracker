@@ -174,7 +174,7 @@ function renderSignalCard(sig, name) {
   const tps = sig.takeProfits
     .map(
       (tp) => `
-      <div class="lbl">${tp.label}</div><div class="val tp">$${fmtPrice(tp.price)}</div>
+      <div class="lbl"><img src="asset/trophy.png" alt="" />${tp.label}</div><div class="val tp">$${fmtPrice(tp.price)}</div>
       <div class="r">${tp.r}R</div><div></div><div></div>`
     )
     .join('');
@@ -186,9 +186,9 @@ function renderSignalCard(sig, name) {
         <small>${name}</small>
       </div>
       <div class="lvl-table">
-        <div class="lbl">ENTRY</div><div class="val entry">$${fmtPrice(sig.entry)}</div><div class="r"></div>
-        <div class="lbl">RISK</div><div class="val">${sig.riskPct}%</div>
-        <div class="lbl">STOP LOSS</div><div class="val sl">$${fmtPrice(sig.stopLoss)}</div><div class="r"></div><div></div><div></div>
+        <div class="lbl"><img src="asset/wallet.png" alt="" />ENTRY</div><div class="val entry">$${fmtPrice(sig.entry)}</div><div class="r"></div>
+        <div class="lbl"><img src="asset/pig.png" alt="" />RISK</div><div class="val">${sig.riskPct}%</div>
+        <div class="lbl"><img src="asset/safe.png" alt="" />STOP LOSS</div><div class="val sl">$${fmtPrice(sig.stopLoss)}</div><div class="r"></div><div></div><div></div>
         ${tps}
       </div>
     </div>`;

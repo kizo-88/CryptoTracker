@@ -4,20 +4,23 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CryptoTracker Terminal</title>
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="apple-touch-icon" href="asset/terminal.png" />
   <link rel="stylesheet" href="style.css" />
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
   <header id="topbar">
-    <div class="brand">CRYPTO<span>TRACKER</span> <em>TERMINAL</em></div>
+    <div class="brand"><img src="asset/terminal.png" alt="" class="brand-icon" />CRYPTO<span>TRACKER</span> <em>TERMINAL</em></div>
     <div id="global-stats" class="global-stats">loading global data…</div>
+    <div class="user-badge"><img src="asset/user.png" alt="" />TRADER</div>
     <div id="clock" class="clock"></div>
   </header>
 
   <main id="layout">
     <!-- LEFT: market scanner -->
     <section id="scanner" class="panel">
-      <div class="panel-title">MARKET SCANNER <span id="scan-count"></span></div>
+      <div class="panel-title"><img class="icon" src="asset/statistics.png" alt="" />MARKET SCANNER <span id="scan-count"></span></div>
       <input id="search" type="text" placeholder="search coin…" autocomplete="off" />
       <div class="scanner-head">
         <span>ASSET</span><span>PRICE</span><span>24H</span><span>SIG</span>
@@ -47,11 +50,11 @@
     <!-- RIGHT: analysis + polymarket -->
     <section id="side" class="panel-col">
       <div class="panel">
-        <div class="panel-title">TECHNICAL ANALYSIS</div>
+        <div class="panel-title"><img class="icon" src="asset/watch.png" alt="" />TECHNICAL ANALYSIS</div>
         <div id="analysis" class="analysis"><div class="loading">–</div></div>
       </div>
       <div class="panel">
-        <div class="panel-title">POLYMARKET <span class="sub">prediction markets</span></div>
+        <div class="panel-title"><img class="icon" src="asset/pie_2.png" alt="" />POLYMARKET <span class="sub">prediction markets</span></div>
         <div class="pm-tabs">
           <button id="pm-tab-crypto" class="active">CRYPTO</button>
           <button id="pm-tab-trending">TRENDING</button>
@@ -62,7 +65,7 @@
   </main>
 
   <footer id="disclaimer">
-    ⚠ Signals are algorithmic technical analysis, not financial advice. Always do your own research and manage risk.
+    <img src="asset/shield.png" alt="" /> Signals are algorithmic technical analysis, not financial advice. Always do your own research and manage risk.
   </footer>
 
   <script src="app.js"></script>

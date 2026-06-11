@@ -35,7 +35,10 @@ body {
   background: var(--panel);
   flex: 0 0 auto;
 }
-.brand { font-weight: bold; font-size: 15px; letter-spacing: 1px; color: #fff; }
+.brand { font-weight: bold; font-size: 15px; letter-spacing: 1px; color: #fff; display: flex; align-items: center; }
+.brand-icon { width: 26px; height: 26px; margin-right: 8px; }
+.user-badge { display: flex; align-items: center; gap: 6px; color: var(--dim); font-size: 11px; letter-spacing: 1px; }
+.user-badge img { width: 20px; height: 20px; }
 .brand span { color: var(--green); }
 .brand em { font-style: normal; color: var(--dim); font-size: 11px; margin-left: 6px; }
 .global-stats { display: flex; gap: 18px; flex: 1; font-size: 12px; color: var(--dim); flex-wrap: wrap; }
@@ -74,6 +77,7 @@ body {
   margin-bottom: 8px;
 }
 .panel-title .sub { color: var(--dim); letter-spacing: 0; text-transform: lowercase; }
+.panel-title .icon { width: 18px; height: 18px; vertical-align: -4px; margin-right: 6px; }
 .loading { color: var(--dim); padding: 12px 4px; font-style: italic; }
 
 /* ---------- scanner ---------- */
@@ -157,7 +161,8 @@ body {
 .sig-dir.SHORT { background: rgba(234,57,67,.12); color: var(--red); border: 1px solid var(--red); }
 .sig-dir.NEUTRAL { background: rgba(240,185,11,.08); color: var(--amber); border: 1px solid var(--amber); }
 .lvl-table { display: grid; grid-template-columns: repeat(5, auto); gap: 4px 16px; align-items: center; padding: 4px 8px; }
-.lvl-table .lbl { color: var(--dim); font-size: 10px; }
+.lvl-table .lbl { color: var(--dim); font-size: 10px; white-space: nowrap; }
+.lvl-table .lbl img { width: 15px; height: 15px; vertical-align: -4px; margin-right: 3px; }
 .lvl-table .val { font-size: 14px; font-weight: bold; }
 .lvl-table .entry { color: var(--blue); }
 .lvl-table .sl { color: var(--red); }
@@ -206,6 +211,7 @@ body {
   border-top: 1px solid var(--border);
   background: var(--panel);
 }
+#disclaimer img { width: 14px; height: 14px; vertical-align: -3px; margin-right: 4px; }
 
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
