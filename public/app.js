@@ -11,6 +11,12 @@ const state = {
   selectedPmMarket: null, // holds { id, question, price } for trading
 };
 
+// Returns saved backend host URL (e.g. "https://api.domain.com" or "http://localhost:3000")
+// or empty string for relative domain (default)
+function getApiHost() {
+  return localStorage.getItem('apiHost') || '';
+}
+
 /* ---------------- formatting helpers ---------------- */
 function fmtPrice(p) {
   if (p == null) return '–';
@@ -39,7 +45,7 @@ setInterval(() => {
 /* ---------------- global stats ---------------- */
 async function loadGlobal() {
   try {
-    const g = await (await fetch('/api/global')).json();
+    const g = await (await fetch(getApiHost() + '/api/global')).json();
     const chg = g.marketCapChange24h;
     $('#global-stats').innerHTML = `
       <span>MCAP <b>$${fmtBig(g.totalMarketCap)}</b> <span class="${chg >= 0 ? 'up' : 'down'}">${chg >= 0 ? '▲' : '▼'}${Math.abs(chg).toFixed(2)}%</span></span>
@@ -52,7 +58,7 @@ async function loadGlobal() {
 /* ---------------- scanner ---------------- */
 async function loadScan() {
   try {
-    const coins = await (await fetch('/api/scan')).json();
+    const coins = await (await fetch(getApiHost() + '/api/scan')).json();
     if (Array.isArray(coins)) {
       state.coins = coins;
       renderScanner();
@@ -84,8 +90,9 @@ function renderScanner() {
       state.selected = { symbol: c.symbol, binance: c.binanceSymbol, id: c.id, name: c.name };
       renderScanner();
       loadSignal();
-      // Update symbol indicator on manual order form
-      $('#order-crypto-symbol').textContent = c.symbol;
+      if ($('#order-crypto-symbol')) {
+        $('#order-crypto-symbol').textContent = c.symbol;
+      }
     });
   });
 }
@@ -150,7 +157,7 @@ async function loadSignal() {
   $('#signal-card').innerHTML = '<div class="loading">analysing…</div>';
   $('#analysis').innerHTML = '<div class="loading">computing indicators…</div>';
   try {
-    const res = await fetch(`/api/signal?binance=${binance}&id=${id}&interval=${state.interval}`);
+    const res = await fetch(getApiHost() + `/api/signal?binance=${binance}&id=${id}&interval=${state.interval}`);
     const data = await res.json();
     if (reqId !== signalReq) return;
     if (data.error) throw new Error(data.error);
@@ -229,7 +236,7 @@ document.querySelectorAll('.tf-buttons button').forEach((btn) => {
 /* ---------------- polymarket ---------------- */
 async function loadPolymarket() {
   try {
-    const data = await (await fetch('/api/polymarket')).json();
+    const data = await (await fetch(getApiHost() + '/api/polymarket')).json();
     if (data && !data.error) {
       state.pmData = data;
       renderPolymarket();
@@ -302,19 +309,15 @@ function renderPolymarket() {
       const { id, q, outcome, px } = btn.dataset;
       state.selectedPmMarket = { id, question: q, price: +px };
 
-      // Switch to order tab
       switchTab('order');
 
-      // Update Polymarket order selection pane
       $('#pm-order-selection').innerHTML = `
         <span class="q">${q}</span>
         <span class="stat">Target: <b>${outcome}</b> · Current Price: <b>${(+px * 100).toFixed(0)}¢</b></span>`;
       
-      // Select outcome radio button
       document.querySelectorAll('#poly-outcome button').forEach((b) => b.classList.remove('active'));
       $(`#poly-outcome button[data-outcome="${outcome}"]`).classList.add('active');
 
-      // Enable submit button
       $('#btn-submit-poly').removeAttribute('disabled');
       $('#poly-order-status').className = 'status-msg';
       $('#poly-order-status').textContent = '';
@@ -349,6 +352,50 @@ $('#modal-overlay').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) $('#modal-overlay').classList.add('hidden');
 });
 
+// Configure API Host
+const activeHost = getApiHost();
+$('#api-host-url').value = activeHost;
+if (activeHost) {
+  $('#api-dot').className = 'dot on';
+}
+
+$('#api-host-save').addEventListener('click', async () => {
+  let host = $('#api-host-url').value.trim();
+  if (host) host = host.replace(/\/+$/, ''); // strip trailing slash
+
+  const resultEl = $('#api-host-result');
+  resultEl.className = 'acct-result';
+  resultEl.innerHTML = 'testing connection…';
+
+  try {
+    const testUrl = host ? `${host}/api/global` : '/api/global';
+    const res = await fetch(testUrl, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+    await res.json();
+
+    if (host) {
+      localStorage.setItem('apiHost', host);
+      $('#api-dot').className = 'dot on';
+    } else {
+      localStorage.removeItem('apiHost');
+      $('#api-dot').className = 'dot off';
+    }
+    
+    resultEl.innerHTML = '<span class="up" style="color:var(--green)">✓ Connection verified! Reloading dashboard…</span>';
+    setTimeout(() => {
+      loadGlobal();
+      loadScan();
+      loadSignal();
+      loadPolymarket();
+      loadPortfolio();
+      loadAutotradeStatus();
+    }, 800);
+  } catch (err) {
+    resultEl.innerHTML = `<span class="err">⚠ Connection failed: ${err.message}</span>`;
+    $('#api-dot').className = 'dot off';
+  }
+});
+
 function renderMexcAccount(acct) {
   connections.mexc = true;
   $('#mexc-dot').className = 'dot on';
@@ -367,11 +414,10 @@ function renderMexcAccount(acct) {
     ${acct.balances.length > 12 ? `<div class="hint">+${acct.balances.length - 12} more assets</div>` : ''}
     <div class="acct-row"><button id="mexc-disconnect" class="btn-go" style="background:var(--red)">DISCONNECT</button></div>`;
   
-  // Update Live Balance indicator in Bottom hub
   $('#bal-mexc-live').textContent = acct.totalUsd != null ? `$${acct.totalUsd.toLocaleString()}` : 'CONNECTED';
 
   $('#mexc-disconnect').addEventListener('click', async () => {
-    await fetch('/api/disconnect/mexc', { method: 'POST' });
+    await fetch(getApiHost() + '/api/disconnect/mexc', { method: 'POST' });
     connections.mexc = false;
     $('#mexc-dot').className = 'dot off';
     $('#mexc-form').style.display = '';
@@ -391,7 +437,7 @@ $('#mexc-connect').addEventListener('click', async () => {
   $('#mexc-connect').disabled = true;
   $('#mexc-result').innerHTML = 'connecting…';
   try {
-    const res = await fetch('/api/connect/mexc', {
+    const res = await fetch(getApiHost() + '/api/connect/mexc', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ key, secret }),
@@ -400,7 +446,7 @@ $('#mexc-connect').addEventListener('click', async () => {
     if (data.error) throw new Error(data.error);
     $('#mexc-key').value = '';
     $('#mexc-secret').value = '';
-    const acct = await (await fetch('/api/mexc/account')).json();
+    const acct = await (await fetch(getApiHost() + '/api/mexc/account')).json();
     if (acct.error) throw new Error(acct.error);
     renderMexcAccount(acct);
   } catch (err) {
@@ -412,9 +458,9 @@ $('#mexc-connect').addEventListener('click', async () => {
 
 (async () => {
   try {
-    const st = await (await fetch('/api/mexc/status')).json();
+    const st = await (await fetch(getApiHost() + '/api/mexc/status')).json();
     if (st.connected) {
-      const acct = await (await fetch('/api/mexc/account')).json();
+      const acct = await (await fetch(getApiHost() + '/api/mexc/account')).json();
       if (!acct.error) renderMexcAccount(acct);
     }
   } catch { /* stay disconnected */ }
@@ -463,7 +509,7 @@ phantomConnect(true);
 async function loadPolymarketAccount(address) {
   $('#pm-result').innerHTML = 'loading positions…';
   try {
-    const data = await (await fetch(`/api/polymarket/positions?address=${encodeURIComponent(address)}`)).json();
+    const data = await (await fetch(getApiHost() + `/api/polymarket/positions?address=${encodeURIComponent(address)}`)).json();
     if (data.error) throw new Error(data.error);
     connections.polymarket = true;
     $('#pm-dot').className = 'dot on';
@@ -523,10 +569,9 @@ document.querySelectorAll('.hub-tabs button').forEach((btn) => {
   });
 });
 
-// Position cancel/close helper
 async function closePosition(market, id, price) {
   try {
-    const res = await fetch('/api/trade/close', {
+    const res = await fetch(getApiHost() + '/api/trade/close', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ market, id, price }),
@@ -539,17 +584,14 @@ async function closePosition(market, id, price) {
   }
 }
 
-// 1. Portfolio Updates (Balances and Open Positions)
 async function loadPortfolio() {
   try {
-    const snap = await (await fetch('/api/portfolio')).json();
+    const snap = await (await fetch(getApiHost() + '/api/portfolio')).json();
     if (snap.error) return;
 
-    // Balances
     $('#bal-crypto-paper').textContent = `$${snap.paperBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
     $('#bal-poly-paper').textContent = `$${snap.polymarketPaperBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
 
-    // Render Crypto Positions
     if (!snap.positions || snap.positions.length === 0) {
       $('#crypto-positions-list').innerHTML = '<div class="hint">no open crypto positions</div>';
     } else {
@@ -588,7 +630,6 @@ async function loadPortfolio() {
         </table>`;
     }
 
-    // Render Polymarket Positions
     if (!snap.polymarketPositions || snap.polymarketPositions.length === 0) {
       $('#poly-positions-list').innerHTML = '<div class="hint">no open prediction positions</div>';
     } else {
@@ -632,10 +673,8 @@ async function loadPortfolio() {
   }
 }
 
-// Bind closePosition globally for inline HTML onclick handlers
 window.closePosition = closePosition;
 
-// 2. Manual Order Management
 let activeCryptoSide = 'LONG';
 document.querySelectorAll('#crypto-side button').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -667,7 +706,7 @@ $('#btn-submit-crypto').addEventListener('click', async () => {
   statusEl.textContent = 'submitting order…';
 
   try {
-    const res = await fetch('/api/trade/open', {
+    const res = await fetch(getApiHost() + '/api/trade/open', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -711,10 +750,6 @@ $('#btn-submit-poly').addEventListener('click', async () => {
   const sizeUsdc = $('#poly-amount').value;
   const mode = $('#poly-mode').value;
   
-  // Calculate price based on selected YES/NO.
-  // YES price is pm.price (if selected YES), NO price is 1.0 - YES price (if selected NO)
-  // Wait, if they clicked Buy NO from shortcut, state.selectedPmMarket.price is already pre-set to the NO price!
-  // But let's check: if outcome matches selection, use price; else invert YES price.
   let price = pm.price;
   
   const statusEl = $('#poly-order-status');
@@ -722,7 +757,7 @@ $('#btn-submit-poly').addEventListener('click', async () => {
   statusEl.textContent = 'submitting prediction…';
 
   try {
-    const res = await fetch('/api/trade/open', {
+    const res = await fetch(getApiHost() + '/api/trade/open', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -746,14 +781,13 @@ $('#btn-submit-poly').addEventListener('click', async () => {
   }
 });
 
-// 3. Autotrader Configurations
 async function loadAutotradeStatus() {
   try {
-    const res = await fetch('/api/autotrade/status');
+    const res = await fetch(getApiHost() + '/api/autotrade/status');
     const data = await res.json();
     if (data.error) return;
 
-    // Crypto Form Fill
+    // Crypto Bot
     const c = data.crypto;
     $('#crypto-auto-enabled').checked = c.enabled;
     $('#crypto-auto-mode').value = c.mode;
@@ -763,7 +797,7 @@ async function loadAutotradeStatus() {
     $('#crypto-auto-max').value = c.maxPositions;
     $('#crypto-auto-dot').className = c.enabled ? 'dot on' : 'dot off';
 
-    // Polymarket Form Fill
+    // Polymarket Bot
     const pm = data.polymarket;
     $('#poly-auto-enabled').checked = pm.enabled;
     $('#poly-auto-mode').value = pm.mode;
@@ -773,7 +807,7 @@ async function loadAutotradeStatus() {
     $('#poly-auto-max').value = pm.maxPositions;
     $('#poly-auto-dot').className = pm.enabled ? 'dot on' : 'dot off';
 
-    // Logs window rendering
+    // Logs
     if (Array.isArray(data.log)) {
       const logsHtml = data.log.map((log) => {
         const timeStr = new Date(log.at).toLocaleTimeString('en-GB');
@@ -795,7 +829,7 @@ $('#btn-save-crypto-auto').addEventListener('click', async () => {
   const maxPositions = $('#crypto-auto-max').value;
 
   try {
-    await fetch('/api/autotrade/configure', {
+    await fetch(getApiHost() + '/api/autotrade/configure', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -818,7 +852,7 @@ $('#btn-save-poly-auto').addEventListener('click', async () => {
   const maxPositions = $('#poly-auto-max').value;
 
   try {
-    await fetch('/api/autotrade/configure', {
+    await fetch(getApiHost() + '/api/autotrade/configure', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -849,7 +883,6 @@ setInterval(loadScan, 60_000);
 setInterval(loadSignal, 60_000);
 setInterval(loadPolymarket, 120_000);
 
-// Fast polling for manual paper positions updates
+// Polling for portfolio & autotrader
 setInterval(loadPortfolio, 5000);
-// Medium polling for autotrader status and terminal logs
 setInterval(loadAutotradeStatus, 10000);

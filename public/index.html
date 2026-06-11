@@ -285,7 +285,17 @@
       </div>
 
       <div class="acct-section">
-        <div class="acct-title"><img src="asset/wallet.png" alt="" /> MEXC EXCHANGE <span id="mexc-dot" class="dot off"></span></div>
+        <div class="acct-title"><img src="asset/statistics.png" /> TERMINAL BACKEND API <span id="api-dot" class="dot off"></span></div>
+        <div class="acct-row">
+          <input id="api-host-url" type="text" placeholder="e.g. http://localhost:3000 or https://backend.com" autocomplete="off" />
+          <button id="api-host-save" class="btn-go">SAVE</button>
+        </div>
+        <div class="hint">points the static live dashboard to your running Express backend server</div>
+        <div id="api-host-result" class="acct-result"></div>
+      </div>
+
+      <div class="acct-section">
+        <div class="acct-title"><img src="asset/wallet.png" /> MEXC EXCHANGE <span id="mexc-dot" class="dot off"></span></div>
         <div id="mexc-form" class="acct-form">
           <input id="mexc-key" type="password" placeholder="API key (read-only recommended)" autocomplete="off" />
           <input id="mexc-secret" type="password" placeholder="API secret" autocomplete="off" />
