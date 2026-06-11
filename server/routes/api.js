@@ -3,6 +3,8 @@ const market = require('../services/market');
 const polymarket = require('../services/polymarket');
 const mexc = require('../services/mexc');
 const { buildSignal } = require('../services/signals');
+const trading = require('../services/trading');
+const autotrader = require('../services/autotrader');
 
 const router = express.Router();
 
@@ -29,7 +31,7 @@ router.get(
   handle(async (req) => {
     const binanceSymbol = (req.query.binance || 'BTCUSDT').toUpperCase();
     const coinId = req.query.id || null;
-    const interval = ['1h', '4h', '1d'].includes(req.query.interval) ? req.query.interval : '4h';
+    const interval = ['5m', '1h', '4h', '1d'].includes(req.query.interval) ? req.query.interval : '4h';
     const { source, candles } = await market.getKlines({ binanceSymbol, coinId, interval });
     if (!candles || candles.length < 30) throw new Error(`not enough candle data for ${binanceSymbol}`);
     const signal = buildSignal(candles);
@@ -84,6 +86,78 @@ router.get(
     }
     account.balances.sort((a, b) => (b.usdValue ?? 0) - (a.usdValue ?? 0));
     return { ...account, totalUsd: +totalUsd.toFixed(2) };
+  })
+);
+
+// --- Unified Trading & Portfolio ---
+router.get(
+  '/portfolio',
+  handle(async () => {
+    // 1) Fetch current crypto prices for marking PnL
+    const scan = await market.getScan().catch(() => []);
+    const priceMap = new Map(scan.map((c) => [c.symbol, c.price]));
+    const priceOf = (pos) => priceMap.get(pos.symbol) || null;
+
+    // 2) Fetch current Polymarket prices for marking PnL
+    const pmData = await polymarket.getMarkets().catch(() => ({ crypto: [], trending: [] }));
+    const allPmMarkets = [...(pmData.crypto || []), ...(pmData.trending || [])];
+    const pmPriceMap = new Map();
+    for (const m of allPmMarkets) {
+      if (m.outcomes[0]?.price != null) {
+        pmPriceMap.set(m.id, m.outcomes[0].price);
+      }
+    }
+    const polymarketPriceOf = (marketId) => pmPriceMap.get(marketId) || null;
+
+    // 3) Generate portfolio snapshot
+    return trading.snapshot(priceOf, polymarketPriceOf);
+  })
+);
+
+router.post(
+  '/trade/open',
+  handle(async (req) => {
+    const { market: mkt, ...params } = req.body || {};
+    if (mkt === 'crypto') {
+      return trading.open(params);
+    } else if (mkt === 'polymarket') {
+      return trading.openPolymarket(params);
+    } else {
+      throw new Error('invalid market type — expected crypto or polymarket');
+    }
+  })
+);
+
+router.post(
+  '/trade/close',
+  handle(async (req) => {
+    const { market: mkt, id, price } = req.body || {};
+    if (!id) throw new Error('position id is required');
+    if (mkt === 'crypto') {
+      return trading.close(id, price);
+    } else if (mkt === 'polymarket') {
+      return trading.closePolymarket(id, price);
+    } else {
+      throw new Error('invalid market type — expected crypto or polymarket');
+    }
+  })
+);
+
+// --- Unified Autotrader Config & Status ---
+router.get('/autotrade/status', handle(() => autotrader.status()));
+
+router.post(
+  '/autotrade/configure',
+  handle(async (req) => {
+    const { market: mkt, config } = req.body || {};
+    if (!config) throw new Error('config patch is required');
+    if (mkt === 'crypto') {
+      return autotrader.configure(config);
+    } else if (mkt === 'polymarket') {
+      return autotrader.configurePolymarket(config);
+    } else {
+      throw new Error('invalid market type — expected crypto or polymarket');
+    }
   })
 );
 

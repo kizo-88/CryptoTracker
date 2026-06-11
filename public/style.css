@@ -284,3 +284,403 @@ body {
   #layout { grid-template-columns: 240px 1fr; }
   #side { display: none; }
 }
+
+/* ---------- trading hub ---------- */
+#chart-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+#trading-hub {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 315px;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+  padding-top: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+.hub-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+.hub-tabs button {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 5px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.hub-tabs button:hover {
+  color: var(--text);
+  border-color: var(--blue);
+}
+.hub-tabs button.active {
+  background: var(--panel);
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.tab-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.hub-panes {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.hub-pane {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.hub-pane.hidden {
+  display: none !important;
+}
+
+/* Pane 1: Positions & Balances */
+.balances-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.bal-card {
+  flex: 1;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+}
+.bal-label {
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: 0.5px;
+}
+.bal-val {
+  font-size: 13px;
+  font-weight: bold;
+  color: #fff;
+  margin-top: 2px;
+}
+
+.positions-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+.pos-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: rgba(19, 27, 44, 0.3);
+  border: 1px solid rgba(30, 41, 63, 0.4);
+  border-radius: 4px;
+  padding: 8px;
+}
+.column-title {
+  font-size: 10px;
+  font-weight: bold;
+  color: var(--amber);
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pos-table-container {
+  flex: 1;
+  overflow-y: auto;
+  font-size: 11px;
+}
+
+/* Tables inside positions */
+.trade-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.trade-table th {
+  font-size: 9px;
+  color: var(--dim);
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.trade-table td {
+  padding: 5px 6px;
+  border-bottom: 1px dashed rgba(30, 41, 63, 0.4);
+  vertical-align: middle;
+}
+.trade-table tr:hover {
+  background: var(--panel2);
+}
+.btn-close-pos {
+  background: rgba(234, 57, 67, 0.15);
+  border: 1px solid var(--red);
+  color: var(--red);
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.btn-close-pos:hover {
+  background: var(--red);
+  color: #fff;
+}
+
+/* Pane 2: Manual Order Form */
+.order-forms {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  flex: 1;
+}
+.order-form-box {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.form-row label {
+  font-size: 9px;
+  color: var(--dim);
+  font-weight: bold;
+}
+.form-row input, .form-row select {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  outline: none;
+}
+.form-row input:focus, .form-row select:focus {
+  border-color: var(--blue);
+}
+.radio-group {
+  display: flex;
+  gap: 6px;
+}
+.radio-group button {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 5px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.radio-group button.active.BUY {
+  background: rgba(22, 199, 132, 0.15);
+  color: var(--green);
+  border-color: var(--green);
+}
+.radio-group button.active.SELL {
+  background: rgba(234, 57, 67, 0.15);
+  color: var(--red);
+  border-color: var(--red);
+}
+.radio-group button.active.YES {
+  background: rgba(22, 199, 132, 0.15);
+  color: var(--green);
+  border-color: var(--green);
+}
+.radio-group button.active.NO {
+  background: rgba(234, 57, 67, 0.15);
+  color: var(--red);
+  border-color: var(--red);
+}
+.form-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.form-cols label {
+  font-size: 9px;
+  color: var(--dim);
+}
+.form-row-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.btn-secondary {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn-secondary:hover {
+  border-color: var(--blue);
+}
+.status-msg {
+  font-size: 10px;
+  margin-top: 4px;
+}
+.status-msg.success { color: var(--green); }
+.status-msg.error { color: var(--red); }
+
+.pm-selected-market {
+  background: var(--panel);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 10px;
+  color: var(--text);
+}
+.pm-selected-market span.q {
+  font-weight: bold;
+  display: block;
+  margin-bottom: 4px;
+}
+.pm-selected-market span.stat {
+  color: var(--dim);
+}
+
+/* Pane 3: Autotrade settings */
+.autotrade-grids {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.autotrade-card {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.form-row-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+.form-row-toggle label {
+  font-size: 9px;
+  color: var(--dim);
+  font-weight: bold;
+}
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.form-grid-2 label {
+  font-size: 8px;
+  color: var(--dim);
+}
+.form-grid-2 input {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  outline: none;
+}
+
+.logs-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: #06090f;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px;
+}
+.logs-window {
+  flex: 1;
+  overflow-y: auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #8da1b9;
+  padding: 4px;
+  line-height: 1.4;
+  height: 90px;
+  border: 1px solid #131b2c;
+  background: #06090f;
+}
+.log-line {
+  border-bottom: 1px solid rgba(30, 41, 63, 0.2);
+  padding: 2px 0;
+}
+.log-line.error { color: var(--red); }
+.log-line.win { color: var(--green); }
+.log-line.loss { color: #f05252; }
+.log-line.info { color: var(--blue); }
+
+/* Polymarket List Quant Updates */
+.pm-quant-badge {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--blue);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 3px;
+  padding: 2px 6px;
+  margin-top: 4px;
+}
+.pm-quant-badge b {
+  color: #fff;
+}
+.pm-quant-badge .edge-val.BUY_YES { color: var(--green); }
+.pm-quant-badge .edge-val.BUY_NO { color: var(--red); }
+
+.pm-trade-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+.btn-pm-action {
+  background: var(--blue);
+  border: none;
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.btn-pm-action:hover {
+  filter: brightness(1.2);
+}

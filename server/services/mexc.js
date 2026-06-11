@@ -23,7 +23,7 @@ function disconnect() {
   creds = { key: null, secret: null };
 }
 
-async function signedGet(path, params = {}) {
+async function signedRequest(method, path, params = {}) {
   if (!isConnected()) throw new Error('MEXC not connected — add API key first');
   const qs = new URLSearchParams({
     ...params,
@@ -32,6 +32,7 @@ async function signedGet(path, params = {}) {
   }).toString();
   const signature = crypto.createHmac('sha256', creds.secret).update(qs).digest('hex');
   const res = await fetch(`${BASE}${path}?${qs}&signature=${signature}`, {
+    method,
     headers: { 'X-MEXC-APIKEY': creds.key },
     signal: AbortSignal.timeout(12000),
   });
@@ -41,6 +42,8 @@ async function signedGet(path, params = {}) {
   }
   return res.json();
 }
+
+const signedGet = (path, params) => signedRequest('GET', path, params);
 
 /** Spot balances (non-zero only). */
 async function getAccount() {
@@ -52,4 +55,20 @@ async function getAccount() {
   return { canTrade: acct.canTrade, accountType: acct.accountType, balances };
 }
 
-module.exports = { setCreds, isConnected, disconnect, getAccount };
+/**
+ * Place a spot MARKET order on MEXC (symbol like BTCUSDT).
+ * BUY uses quoteOrderQty (spend N USDT); SELL uses quantity (sell N base).
+ */
+async function placeMarketOrder({ symbol, side, usdtAmount, quantity }) {
+  const params = { symbol, side, type: 'MARKET' };
+  if (side === 'BUY') {
+    if (!usdtAmount || usdtAmount <= 0) throw new Error('usdtAmount required for BUY');
+    params.quoteOrderQty = usdtAmount;
+  } else {
+    if (!quantity || quantity <= 0) throw new Error('quantity required for SELL');
+    params.quantity = quantity;
+  }
+  return signedRequest('POST', '/api/v3/order', params);
+}
+
+module.exports = { setCreds, isConnected, disconnect, getAccount, placeMarketOrder };

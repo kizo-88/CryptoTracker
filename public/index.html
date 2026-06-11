@@ -30,20 +30,228 @@
       </div>
     </section>
 
-    <!-- CENTER: chart + signal -->
+    <!-- CENTER: chart + signal + trading -->
     <section id="main" class="panel">
-      <div class="chart-header">
-        <div id="coin-title" class="coin-title">BTC / USDT</div>
-        <div class="tf-buttons">
-          <button data-tf="1h">1H</button>
-          <button data-tf="4h" class="active">4H</button>
-          <button data-tf="1d">1D</button>
+      <!-- Top Chart Area -->
+      <div id="chart-area">
+        <div class="chart-header">
+          <div id="coin-title" class="coin-title">BTC / USDT</div>
+          <div class="tf-buttons">
+            <button data-tf="5m">5M</button>
+            <button data-tf="1h">1H</button>
+            <button data-tf="4h" class="active">4H</button>
+            <button data-tf="1d">1D</button>
+          </div>
+          <div id="chart-source" class="chart-source"></div>
         </div>
-        <div id="chart-source" class="chart-source"></div>
+        <div id="chart"></div>
+        <div id="signal-card" class="signal-card">
+          <div class="loading">select a coin to analyse…</div>
+        </div>
       </div>
-      <div id="chart"></div>
-      <div id="signal-card" class="signal-card">
-        <div class="loading">select a coin to analyse…</div>
+
+      <!-- Bottom Trading Hub -->
+      <div id="trading-hub">
+        <div class="hub-tabs">
+          <button id="hub-tab-positions" class="active"><img src="asset/safe.png" class="tab-icon" />POSITIONS &amp; BALANCES</button>
+          <button id="hub-tab-order"><img src="asset/statistics.png" class="tab-icon" />MANUAL ORDER</button>
+          <button id="hub-tab-autotrade"><img src="asset/watch.png" class="tab-icon" />QUANT AUTOTRADER</button>
+        </div>
+
+        <div class="hub-panes">
+          <!-- Pane 1: Positions & Balances -->
+          <div id="hub-pane-positions" class="hub-pane">
+            <div class="balances-row">
+              <div class="bal-card">
+                <div class="bal-label">CRYPTO PAPER</div>
+                <div class="bal-val" id="bal-crypto-paper">$10,000.00</div>
+              </div>
+              <div class="bal-card">
+                <div class="bal-label">POLYMARKET PAPER</div>
+                <div class="bal-val" id="bal-poly-paper">$10,000.00</div>
+              </div>
+              <div class="bal-card">
+                <div class="bal-label">MEXC LIVE</div>
+                <div class="bal-val" id="bal-mexc-live">DISCONNECTED</div>
+              </div>
+            </div>
+            
+            <div class="positions-split">
+              <div class="pos-column">
+                <div class="column-title">CRYPTO SPOT POSITIONS</div>
+                <div id="crypto-positions-list" class="pos-table-container">
+                  <div class="hint">no open crypto positions</div>
+                </div>
+              </div>
+              <div class="pos-column">
+                <div class="column-title">POLYMARKET CONTRACTS</div>
+                <div id="poly-positions-list" class="pos-table-container">
+                  <div class="hint">no open prediction positions</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pane 2: Manual Orders -->
+          <div id="hub-pane-order" class="hub-pane hidden">
+            <div class="order-forms">
+              <!-- Crypto Form -->
+              <div class="order-form-box">
+                <div class="column-title">CRYPTO ORDER (<span id="order-crypto-symbol">BTC</span>)</div>
+                <div class="form-row">
+                  <label>SIDE</label>
+                  <div class="radio-group" id="crypto-side">
+                    <button class="btn-side BUY active" data-side="LONG">BUY (LONG)</button>
+                    <button class="btn-side SELL" data-side="SHORT">SELL (SHORT)</button>
+                  </div>
+                </div>
+                <div class="form-row">
+                  <label>MODE</label>
+                  <select id="crypto-mode">
+                    <option value="paper">PAPER TRADING</option>
+                    <option value="live">LIVE (MEXC)</option>
+                  </select>
+                </div>
+                <div class="form-row">
+                  <label>SIZE (USDT)</label>
+                  <input type="number" id="crypto-amount" value="100" min="5" />
+                </div>
+                <div class="form-row">
+                  <div class="form-cols">
+                    <div>
+                      <label>STOP LOSS</label>
+                      <input type="number" id="crypto-sl" placeholder="optional" step="any" />
+                    </div>
+                    <div>
+                      <label>TAKE PROFIT</label>
+                      <input type="number" id="crypto-tp" placeholder="optional" step="any" />
+                    </div>
+                  </div>
+                </div>
+                <div class="form-row-actions">
+                  <button id="btn-autofill-crypto" class="btn-secondary">AUTO-FILL FROM SIGNAL</button>
+                  <button id="btn-submit-crypto" class="btn-go">PLACE SPOT ORDER</button>
+                </div>
+                <div id="crypto-order-status" class="status-msg"></div>
+              </div>
+
+              <!-- Polymarket Form -->
+              <div class="order-form-box">
+                <div class="column-title">POLYMARKET ORDER</div>
+                <div id="pm-order-selection" class="pm-selected-market">
+                  <div class="hint">Select a contract from the Polymarket scanner list on the right column to trade</div>
+                </div>
+                <div class="form-row">
+                  <label>OUTCOME</label>
+                  <div class="radio-group" id="poly-outcome">
+                    <button class="btn-outcome YES active" data-outcome="YES">YES</button>
+                    <button class="btn-outcome NO" data-outcome="NO">NO</button>
+                  </div>
+                </div>
+                <div class="form-row">
+                  <label>MODE</label>
+                  <select id="poly-mode">
+                    <option value="paper">PAPER TRADING</option>
+                  </select>
+                </div>
+                <div class="form-row">
+                  <label>SIZE (USDC)</label>
+                  <input type="number" id="poly-amount" value="50" min="1" />
+                </div>
+                <div class="form-row-actions">
+                  <button id="btn-submit-poly" class="btn-go" disabled>PLACE PREDICTION ORDER</button>
+                </div>
+                <div id="poly-order-status" class="status-msg"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pane 3: Autotrader Control Panel -->
+          <div id="hub-pane-autotrade" class="hub-pane hidden">
+            <div class="autotrade-grids">
+              <!-- Crypto Autotrader settings -->
+              <div class="autotrade-card">
+                <div class="column-title">CRYPTO BOT SETTINGS <span id="crypto-auto-dot" class="dot off"></span></div>
+                <div class="form-row-toggle">
+                  <label>AUTO-TRADING ENABLED</label>
+                  <input type="checkbox" id="crypto-auto-enabled" />
+                </div>
+                <div class="form-row">
+                  <label>MODE</label>
+                  <select id="crypto-auto-mode">
+                    <option value="paper">PAPER TRADING</option>
+                    <option value="live">LIVE (MEXC)</option>
+                  </select>
+                </div>
+                <div class="form-grid-2">
+                  <div>
+                    <label>MIN CONFIDENCE (%)</label>
+                    <input type="number" id="crypto-auto-confidence" min="1" max="100" />
+                  </div>
+                  <div>
+                    <label>USDT PER TRADE</label>
+                    <input type="number" id="crypto-auto-size" min="5" />
+                  </div>
+                </div>
+                <div class="form-grid-2">
+                  <div>
+                    <label>INTERVAL (MIN)</label>
+                    <input type="number" id="crypto-auto-interval" min="1" />
+                  </div>
+                  <div>
+                    <label>MAX POSITIONS</label>
+                    <input type="number" id="crypto-auto-max" min="1" />
+                  </div>
+                </div>
+                <button id="btn-save-crypto-auto" class="btn-go">SAVE CRYPTO BOT</button>
+              </div>
+
+              <!-- Polymarket Autotrader settings -->
+              <div class="autotrade-card">
+                <div class="column-title">POLYMARKET BOT SETTINGS <span id="poly-auto-dot" class="dot off"></span></div>
+                <div class="form-row-toggle">
+                  <label>AUTO-TRADING ENABLED</label>
+                  <input type="checkbox" id="poly-auto-enabled" />
+                </div>
+                <div class="form-row">
+                  <label>MODE</label>
+                  <select id="poly-auto-mode">
+                    <option value="paper">PAPER TRADING</option>
+                  </select>
+                </div>
+                <div class="form-grid-2">
+                  <div>
+                    <label>MIN EDGE (%)</label>
+                    <input type="number" id="poly-auto-edge" min="1" max="50" step="0.5" />
+                  </div>
+                  <div>
+                    <label>USDC PER TRADE</label>
+                    <input type="number" id="poly-auto-size" min="1" />
+                  </div>
+                </div>
+                <div class="form-grid-2">
+                  <div>
+                    <label>INTERVAL (MIN)</label>
+                    <input type="number" id="poly-auto-interval" min="1" />
+                  </div>
+                  <div>
+                    <label>MAX POSITIONS</label>
+                    <input type="number" id="poly-auto-max" min="1" />
+                  </div>
+                </div>
+                <button id="btn-save-poly-auto" class="btn-go">SAVE POLY BOT</button>
+              </div>
+            </div>
+
+            <!-- Terminal-style logs -->
+            <div class="logs-section">
+              <div class="column-title">AUTOTRADER CORE RUNTIME LOGS</div>
+              <div id="autotrade-logs" class="logs-window">
+                <div class="log-line info">Initialising autotrader log socket connection...</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -109,6 +317,23 @@
       </div>
     </div>
   </div>
+
+  <!-- Firebase App & Analytics SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyA-KtuXq--yJujdwZgRnfb48qvUo4nmAB8",
+      authDomain: "kaicryptoz.firebaseapp.com",
+      projectId: "kaicryptoz",
+      storageBucket: "kaicryptoz.firebasestorage.app",
+      messagingSenderId: "123298393762",
+      appId: "1:123298393762:web:f63761f000a66cea83f1fb",
+      measurementId: "G-X7P7TEW2BN"
+    };
+    firebase.initializeApp(firebaseConfig);
+    firebase.analytics();
+  </script>
 
   <script src="app.js"></script>
 </body>

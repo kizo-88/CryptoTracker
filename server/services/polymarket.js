@@ -4,6 +4,8 @@ const { cached } = require('./cache');
 const GAMMA = 'https://gamma-api.polymarket.com';
 const CRYPTO_RE = /\b(bitcoin|btc|ethereum|eth|solana|sol|xrp|ripple|doge|dogecoin|crypto|cardano|ada|bnb|stablecoin|defi|altcoin|memecoin)\b/i;
 
+const quantEngine = require('./quantEngine');
+
 function parseMaybeJson(s, fallback) {
   if (Array.isArray(s)) return s;
   try { return JSON.parse(s); } catch { return fallback; }
@@ -12,6 +14,10 @@ function parseMaybeJson(s, fallback) {
 function mapMarket(m) {
   const outcomes = parseMaybeJson(m.outcomes, []);
   const prices = parseMaybeJson(m.outcomePrices, []).map(Number);
+  let clobTokenIds = [];
+  try {
+    clobTokenIds = typeof m.clobTokenIds === 'string' ? JSON.parse(m.clobTokenIds) : (m.clobTokenIds || []);
+  } catch {}
   return {
     id: m.id,
     question: m.question,
@@ -24,6 +30,8 @@ function mapMarket(m) {
     volume24h: m.volume24hr != null ? +m.volume24hr : null,
     liquidity: m.liquidity != null ? +m.liquidity : null,
     endDate: m.endDate || null,
+    clobTokenIds,
+    conditionId: m.conditionId || null,
     // "vs" guard: skips sports matchups that happen to contain a crypto word
     // (e.g. tennis player "Solana Sierra")
     isCrypto: CRYPTO_RE.test(`${m.question} ${m.slug}`) && !/\bvs\.?\b/i.test(m.question || ''),
@@ -44,9 +52,37 @@ async function getMarkets() {
       })
     );
     const markets = pages.flat().map(mapMarket).filter((m) => m.outcomes.length >= 2);
+    
+    const cryptoRaw = markets.filter((m) => m.isCrypto).slice(0, 15);
+    const trendingRaw = markets.slice(0, 15);
+
+    // Enrich top markets with Quant Analysis
+    const enrich = async (list) => {
+      return Promise.all(
+        list.map(async (m) => {
+          const yesPrice = m.outcomes[0]?.price;
+          const tokenId = m.clobTokenIds?.[0];
+          if (yesPrice != null && tokenId) {
+            try {
+              const quant = await quantEngine.getQuantAnalysis(m.id, tokenId, yesPrice, m.endDate);
+              return { ...m, quant };
+            } catch (err) {
+              // Fail-safe: if quant fails, return market without quant
+            }
+          }
+          return m;
+        })
+      );
+    };
+
+    const [crypto, trending] = await Promise.all([
+      enrich(cryptoRaw),
+      enrich(trendingRaw)
+    ]);
+
     return {
-      crypto: markets.filter((m) => m.isCrypto).slice(0, 15),
-      trending: markets.slice(0, 15),
+      crypto,
+      trending,
       fetchedAt: new Date().toISOString(),
     };
   });

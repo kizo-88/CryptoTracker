@@ -104,7 +104,7 @@ async function binanceKlines(symbol, interval, limit = 300) {
 
 // CoinGecko OHLC fallback. Granularity is fixed by the days window:
 // 1 day -> 30m candles, 7/14/30 -> 4h, 90+ -> 4d.
-const CG_DAYS_FOR_INTERVAL = { '1h': 1, '4h': 30, '1d': 365 };
+const CG_DAYS_FOR_INTERVAL = { '5m': 1, '1h': 1, '4h': 30, '1d': 365 };
 
 async function coingeckoKlines(coinId, interval) {
   const days = CG_DAYS_FOR_INTERVAL[interval] || 30;

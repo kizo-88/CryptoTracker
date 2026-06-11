@@ -14,6 +14,7 @@ if (fs.existsSync(envPath)) {
 
 const express = require('express');
 const apiRoutes = require('./routes/api');
+const autotrader = require('./services/autotrader');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,6 +22,8 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use('/api', apiRoutes);
+
+autotrader.init();
 
 app.listen(PORT, () => {
   console.log(`CryptoTracker terminal running at http://localhost:${PORT}`);
