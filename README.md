@@ -61,6 +61,22 @@ npm install
 npm start          # http://localhost:3000
 ```
 
+## Cloudflare Pages deployment
+
+The dashboard (`public/`) is deployed to Cloudflare Pages at
+**https://cryptotracker-5hq.pages.dev**. The backend (Express) keeps running
+on a Node host so the auto-traders and live trading keep working.
+
+```bash
+npm run deploy     # wrangler pages deploy public --project-name cryptotracker
+```
+
+When the Pages site is opened with no backend host configured it defaults to
+`http://localhost:3000` (works when you view it on the same machine that runs
+`npm start`). To point it elsewhere — e.g. a public Node host — open the
+**CONNECT** modal → *Terminal Backend API* and save the backend URL. CORS is
+enabled on the backend so the HTTPS Pages site can call it cross-origin.
+
 ## API
 
 | Endpoint | Description |
