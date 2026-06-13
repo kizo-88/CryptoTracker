@@ -53,7 +53,7 @@
           <div class="ct-buttons" id="ct-buttons">
             <button data-ct="candles" class="active">CANDLES</button>
             <button data-ct="volume">VOL PROFILE</button>
-            <button data-ct="heatmap">HEATMAP</button>
+            <button data-ct="bookmap">BOOKMAP</button>
           </div>
           <div id="chart-source" class="chart-source"></div>
         </div>
@@ -62,8 +62,11 @@
           <div id="chart"></div>
           <canvas id="vp-overlay"></canvas>
         </div>
-        <!-- market heatmap (shown when chart type = heatmap) -->
-        <div id="heatmap-view" class="hidden"></div>
+        <!-- bookmap-style time × price liquidity/volume heatmap -->
+        <div id="bookmap-view" class="hidden">
+          <canvas id="bookmap-canvas"></canvas>
+          <div id="bookmap-legend"></div>
+        </div>
         <!-- polymarket selected-market detail (shown for the POLYMARKET category) -->
         <div id="poly-detail" class="hidden"></div>
         <div id="signal-card" class="signal-card">

@@ -136,4 +136,26 @@ async function getKlines({ binanceSymbol, coinId, interval }) {
   });
 }
 
-module.exports = { getScan, getGlobal, getKlines };
+/**
+ * Live order-book depth snapshot for the Bookmap view. Aggregates the raw
+ * Binance book into `buckets` price levels so the heatmap can colour resting
+ * liquidity. Crypto only (no L2 book for forex/indices).
+ */
+async function getDepth(binanceSymbol, buckets = 40) {
+  return cached(`depth:${binanceSymbol}`, 5_000, async () => {
+    let raw, lastErr;
+    for (const host of BINANCE_HOSTS) {
+      try {
+        raw = await fetchJson(`${host}/api/v3/depth?symbol=${binanceSymbol}&limit=500`);
+        break;
+      } catch (err) { lastErr = err; }
+    }
+    if (!raw) throw lastErr;
+    const bids = raw.bids.map(([p, q]) => ({ price: +p, qty: +q }));
+    const asks = raw.asks.map(([p, q]) => ({ price: +p, qty: +q }));
+    const mid = bids.length && asks.length ? (bids[0].price + asks[0].price) / 2 : null;
+    return { mid, bids, asks };
+  });
+}
+
+module.exports = { getScan, getGlobal, getKlines, getDepth };

@@ -60,6 +60,12 @@ router.get(
   })
 );
 
+// Live order-book depth snapshot (crypto only) for the Bookmap heatmap
+router.get(
+  '/depth',
+  handle((req) => market.getDepth((req.query.binance || 'BTCUSDT').toUpperCase()))
+);
+
 // Polymarket prediction markets (crypto-related + overall trending)
 router.get('/polymarket', handle(() => polymarket.getMarkets()));
 

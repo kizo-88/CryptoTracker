@@ -90,7 +90,7 @@ async function loadScan(autoSelectFirst = false) {
       state.coins = coins;
       renderScanner();
       if (autoSelectFirst && coins.length) selectRow(coins[0]);
-      else if (state.chartType === 'heatmap') renderHeatmap();
+      else if (state.chartType === 'bookmap') renderBookmap();
     }
   } catch { /* keep old values */ }
 }
@@ -236,6 +236,7 @@ async function loadSignal() {
     chart.timeScale().fitContent();
     setPriceLines(data.signal, data.candles[data.candles.length - 1]?.time);
     if (state.chartType === 'volume') drawVolumeProfile();
+    else if (state.chartType === 'bookmap') renderBookmap();
 
     $('#chart-source').textContent = `data: ${data.source} · ${data.interval} · ${data.candles.length} candles`;
     renderSignalCard(data.signal, name);
@@ -331,15 +332,15 @@ function setActiveCT() {
 // Decide which view is visible based on category + chart type.
 function applyView() {
   const isPoly = state.category === 'polymarket';
-  const isHeat = !isPoly && state.chartType === 'heatmap';
+  const isBook = !isPoly && state.chartType === 'bookmap';
   const isVol = !isPoly && state.chartType === 'volume';
   show($('#poly-detail'), isPoly);
-  show($('#heatmap-view'), isHeat);
-  show($('#chart-wrap'), !isPoly && !isHeat);
+  show($('#bookmap-view'), isBook);
+  show($('#chart-wrap'), !isPoly && !isBook);
   show($('#signal-card'), !isPoly);
   document.querySelectorAll('#ct-buttons button').forEach((b) => { b.disabled = isPoly; });
   document.querySelectorAll('#tf-buttons button').forEach((b) => { b.disabled = isPoly; });
-  if (isHeat) renderHeatmap();
+  if (isBook) renderBookmap();
   if (isVol) drawVolumeProfile(); else clearVolumeProfile();
 }
 
@@ -353,7 +354,9 @@ document.querySelectorAll('#ct-buttons button').forEach((btn) => {
   });
 });
 window.addEventListener('resize', () => {
-  if (state.chartType === 'volume' && state.category !== 'polymarket') drawVolumeProfile();
+  if (state.category === 'polymarket') return;
+  if (state.chartType === 'volume') drawVolumeProfile();
+  else if (state.chartType === 'bookmap') renderBookmap();
 });
 
 /* ----- volume profile (volume-by-price histogram overlay) ----- */
@@ -402,28 +405,112 @@ function drawVolumeProfile() {
   }
 }
 
-/* ----- market heatmap (tiles by 24h % change) ----- */
-function renderHeatmap() {
-  const host = $('#heatmap-view');
-  if (!host) return;
-  const coins = state.coins || [];
-  if (!coins.length) { host.innerHTML = '<div class="loading">no data for heatmap</div>'; return; }
-  host.innerHTML = coins.map((c) => {
-    const chg = c.change24h;
-    const k = chg == null ? 0 : Math.min(1, Math.abs(chg) / 8);
-    const bg = chg == null ? 'rgba(92,108,138,.15)'
-      : chg >= 0 ? `rgba(22,199,132,${0.12 + k * 0.55})`
-      : `rgba(234,57,67,${0.12 + k * 0.55})`;
-    return `<button class="heat-tile" data-sym="${c.symbol}" style="background:${bg}">
-      <div class="ht-sym">${c.symbol}</div>
-      <div class="ht-px">${rowPrice(c)}</div>
-      <div class="ht-chg">${chg == null ? '–' : (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%'}</div>
-    </button>`;
-  }).join('');
-  host.querySelectorAll('.heat-tile').forEach((t) => t.addEventListener('click', () => {
-    const c = state.coins.find((x) => x.symbol === t.dataset.sym);
-    if (c) { state.chartType = 'candles'; setActiveCT(); selectRow(c); }
-  }));
+/* ----- bookmap-style heatmap (time × price traded-volume heat, plus a
+   live order-book liquidity column on the right edge for crypto) ----- */
+// blue → cyan → green → yellow → red heat ramp for intensity t in [0,1]
+function heatColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  const stops = [
+    [10, 16, 40], [33, 80, 180], [22, 199, 199], [120, 210, 90], [240, 185, 11], [234, 57, 67],
+  ];
+  const x = t * (stops.length - 1);
+  const i = Math.floor(x), f = x - i;
+  const a = stops[i], b = stops[Math.min(i + 1, stops.length - 1)];
+  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * f)},${Math.round(a[1] + (b[1] - a[1]) * f)},${Math.round(a[2] + (b[2] - a[2]) * f)})`;
+}
+
+let bookmapRetries = 0;
+async function renderBookmap() {
+  const view = $('#bookmap-view');
+  const cv = $('#bookmap-canvas');
+  if (!view || !cv || !state.candles || !state.candles.length) return;
+  const rect = view.getBoundingClientRect();
+  if (rect.width < 5 || rect.height < 5) { // not laid out yet — retry a few frames
+    if (bookmapRetries++ < 30) requestAnimationFrame(renderBookmap);
+    return;
+  }
+  bookmapRetries = 0;
+  cv.width = rect.width; cv.height = rect.height;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#06090f';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+
+  const candles = state.candles.slice(-140); // most recent columns
+  let lo = Infinity, hi = -Infinity;
+  for (const c of candles) { if (c.low < lo) lo = c.low; if (c.high > hi) hi = c.high; }
+  if (!(hi > lo)) return;
+  const pad = (hi - lo) * 0.04; lo -= pad; hi += pad; // breathing room
+
+  const rows = 70;
+  const bookW = state.selected.source === 'crypto' ? 70 : 0; // live book column (crypto only)
+  const gridW = cv.width - bookW;
+  const colW = gridW / candles.length;
+  const yOf = (price) => cv.height - ((price - lo) / (hi - lo)) * cv.height;
+  const rowOf = (price) => Math.floor(((price - lo) / (hi - lo)) * rows);
+
+  // traded-volume heat: spread each candle's volume across the price rows it spans
+  let maxCell = 0;
+  const grid = candles.map((c) => {
+    const col = new Array(rows).fill(0);
+    const r1 = Math.max(0, rowOf(c.low)), r2 = Math.min(rows - 1, rowOf(c.high));
+    const span = Math.max(1, r2 - r1 + 1);
+    const per = (c.volume || 0) / span;
+    for (let r = r1; r <= r2; r++) { col[r] += per; if (col[r] > maxCell) maxCell = col[r]; }
+    return col;
+  });
+  const rowH = cv.height / rows;
+  if (maxCell > 0) {
+    for (let x = 0; x < candles.length; x++) {
+      for (let r = 0; r < rows; r++) {
+        const v = grid[x][r];
+        if (!v) continue;
+        ctx.fillStyle = heatColor(Math.pow(v / maxCell, 0.55));
+        ctx.fillRect(x * colW, cv.height - (r + 1) * rowH, colW + 0.5, rowH + 0.5);
+      }
+    }
+  } else {
+    ctx.fillStyle = '#5c6c8a'; ctx.font = '11px Consolas';
+    ctx.fillText('no traded-volume data for this instrument (forex/indices)', 12, 30);
+  }
+
+  // close-price line for orientation
+  ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.2; ctx.beginPath();
+  candles.forEach((c, x) => {
+    const px = x * colW + colW / 2, py = yOf(c.close);
+    x === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+
+  // live order-book liquidity column (resting bids/asks) on the right edge
+  let legend = `BOOKMAP · traded volume heat · ${candles.length} bars`;
+  if (bookW > 0) {
+    try {
+      const depth = await (await fetch(getApiHost() + `/api/depth?binance=${state.selected.binance}`)).json();
+      if (depth && !depth.error) {
+        const buckets = new Array(rows).fill(0);
+        let maxLiq = 0;
+        const add = (arr) => arr.forEach(({ price, qty }) => {
+          if (price < lo || price > hi) return;
+          const r = Math.min(rows - 1, Math.max(0, rowOf(price)));
+          buckets[r] += qty; if (buckets[r] > maxLiq) maxLiq = buckets[r];
+        });
+        add(depth.bids); add(depth.asks);
+        if (maxLiq > 0) {
+          const x0 = gridW;
+          for (let r = 0; r < rows; r++) {
+            if (!buckets[r]) continue;
+            const w = (buckets[r] / maxLiq) * bookW;
+            const midPrice = lo + ((r + 0.5) / rows) * (hi - lo);
+            ctx.fillStyle = depth.mid != null && midPrice >= depth.mid ? 'rgba(234,57,67,.75)' : 'rgba(22,199,132,.75)';
+            ctx.fillRect(x0, cv.height - (r + 1) * rowH, w, rowH + 0.5);
+          }
+          ctx.strokeStyle = 'rgba(92,108,138,.5)'; ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0, cv.height); ctx.stroke();
+          legend += ' · right: live book (green bids / red asks)';
+        }
+      }
+    } catch { /* no book → just the volume heat */ }
+  }
+  $('#bookmap-legend').textContent = legend;
 }
 
 /* ============================================================ */
