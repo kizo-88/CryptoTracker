@@ -83,12 +83,14 @@ async function loadGlobal() {
 
 /* ---------------- scanner ---------------- */
 async function loadScan(autoSelectFirst = false) {
+  if (state.category === 'polymarket') { await loadPolymarket(autoSelectFirst); return; }
   try {
     const coins = await (await fetch(getApiHost() + `/api/scan?category=${state.category}`)).json();
     if (Array.isArray(coins)) {
       state.coins = coins;
       renderScanner();
       if (autoSelectFirst && coins.length) selectRow(coins[0]);
+      else if (state.chartType === 'heatmap') renderHeatmap();
     }
   } catch { /* keep old values */ }
 }
@@ -106,6 +108,8 @@ function selectRow(c) {
 }
 
 function renderScanner() {
+  if (state.category === 'polymarket') return renderPolymarketScanner();
+  if ($('.scanner-head')) $('.scanner-head').innerHTML = '<span>ASSET</span><span>PRICE</span><span>24H</span><span>SIG</span>';
   const q = $('#search').value.trim().toLowerCase();
   const list = state.coins.filter(
     (c) => !q || c.symbol.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
@@ -181,6 +185,13 @@ function setPriceLines(sig, lastTime) {
   mk(sig.entry, '#3b82f6', `◄ ENTRY ${sig.lean}`, LightweightCharts.LineStyle.Solid, 2);
   mk(sig.stopLoss, '#ea3943', 'SL');
   sig.takeProfits.forEach((tp) => mk(tp.price, '#16c784', tp.label));
+  // support / resistance (dotted, muted) — drawn from the signal's S/R clusters
+  if (sig.levels) {
+    sig.levels.resistance.forEach((l, i) =>
+      mk(l.price, '#9a6a2f', `R${i + 1}`, LightweightCharts.LineStyle.Dotted));
+    sig.levels.support.forEach((l, i) =>
+      mk(l.price, '#2f7a9a', `S${i + 1}`, LightweightCharts.LineStyle.Dotted));
+  }
   if (lastTime) {
     candleSeries.setMarkers([
       {
@@ -197,10 +208,13 @@ function setPriceLines(sig, lastTime) {
 /* ---------------- signal ---------------- */
 let signalReq = 0;
 async function loadSignal() {
-  const reqId = ++signalReq;
   const sel = state.selected;
+  if (sel.source === 'polymarket') return; // polymarket has its own detail view
+  const reqId = ++signalReq;
   const { symbol, name } = sel;
   $('#coin-title').textContent = `${symbol}${quoteSuffix(sel)}`;
+  $('#analysis-sym').textContent = symbol;
+  applyView(); // ensure instrument view (chart/heatmap), not polymarket detail
   $('#signal-card').innerHTML = '<div class="loading">analysing…</div>';
   $('#analysis').innerHTML = '<div class="loading">computing indicators…</div>';
   try {
@@ -213,6 +227,7 @@ async function loadSignal() {
     if (data.error) throw new Error(data.error);
 
     state.selectedSignal = data.signal; // Cache signal locally for auto-fill
+    state.candles = data.candles;       // for the volume-profile overlay
 
     candleSeries.setData(data.candles.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
     emaSeries.ema20.setData(data.signal.overlays.ema20);
@@ -220,6 +235,7 @@ async function loadSignal() {
     emaSeries.ema200.setData(data.signal.overlays.ema200);
     chart.timeScale().fitContent();
     setPriceLines(data.signal, data.candles[data.candles.length - 1]?.time);
+    if (state.chartType === 'volume') drawVolumeProfile();
 
     $('#chart-source').textContent = `data: ${data.source} · ${data.interval} · ${data.candles.length} candles`;
     renderSignalCard(data.signal, name);
@@ -255,20 +271,39 @@ function renderSignalCard(sig, name) {
     </div>`;
 }
 
+// colour an oscillator value against its overbought/oversold bands
+function oscClass(v, low, high) {
+  if (v == null) return '';
+  if (v >= high) return 'down'; // overbought = red (reversal risk)
+  if (v <= low) return 'up';    // oversold = green (bounce zone)
+  return '';
+}
+
 function renderAnalysis(sig) {
   const I = sig.indicators;
+  const lv = sig.levels || { support: [], resistance: [] };
+  const srRows = (arr, cls, prefix) =>
+    arr.length
+      ? arr.map((l, i) => `<div><span>${prefix}${i + 1}</span><b class="${cls}">${l.price} <small>×${l.strength}</small></b></div>`).join('')
+      : `<div><span>${prefix}</span><b>–</b></div>`;
   $('#analysis').innerHTML = `
     <div class="ind-grid">
       <div><span>RSI(14)</span><b>${I.rsi ?? '–'}</b></div>
-      <div><span>ATR(14)</span><b>${I.atr ?? '–'}</b></div>
+      <div><span>RSI(5) ·10/90</span><b class="${oscClass(I.rsi5, 10, 90)}">${I.rsi5 ?? '–'}</b></div>
+      <div><span>STOCH %K ·20/80</span><b class="${oscClass(I.stochK, 20, 80)}">${I.stochK ?? '–'}</b></div>
+      <div><span>STOCH %D</span><b>${I.stochD ?? '–'}</b></div>
       <div><span>MACD</span><b>${I.macdLine ?? '–'}</b></div>
       <div><span>MACD SIG</span><b>${I.macdSignal ?? '–'}</b></div>
+      <div><span>ATR(14)</span><b>${I.atr ?? '–'}</b></div>
       <div><span>EMA20</span><b>${I.ema20 ?? '–'}</b></div>
       <div><span>EMA50</span><b>${I.ema50 ?? '–'}</b></div>
       <div><span>EMA200</span><b>${I.ema200 ?? '–'}</b></div>
       <div><span>BB UP/LO</span><b>${I.bbUpper ?? '–'} / ${I.bbLower ?? '–'}</b></div>
-      <div><span>SWING HI</span><b>${I.swingHigh ?? '–'}</b></div>
-      <div><span>SWING LO</span><b>${I.swingLow ?? '–'}</b></div>
+      <div><span>SWING HI/LO</span><b>${I.swingHigh ?? '–'} / ${I.swingLow ?? '–'}</b></div>
+    </div>
+    <div class="sr-block">
+      <div class="sr-col"><div class="sr-head">RESISTANCE</div>${srRows(lv.resistance, 'down', 'R')}</div>
+      <div class="sr-col"><div class="sr-head">SUPPORT</div>${srRows(lv.support, 'up', 'S')}</div>
     </div>
     <ul class="reasons">${sig.reasons.map((r) => `<li>${r}</li>`).join('')}</ul>`;
 }
@@ -283,110 +318,247 @@ document.querySelectorAll('.tf-buttons button').forEach((btn) => {
   });
 });
 
-/* ---------------- polymarket ---------------- */
-async function loadPolymarket() {
+/* ============================================================ */
+/* ============== CHART VIEWS (candles/vp/heatmap) ============ */
+/* ============================================================ */
+function show(el, yes) { if (el) el.classList.toggle('hidden', !yes); }
+
+function setActiveCT() {
+  document.querySelectorAll('#ct-buttons button').forEach((b) =>
+    b.classList.toggle('active', b.dataset.ct === state.chartType));
+}
+
+// Decide which view is visible based on category + chart type.
+function applyView() {
+  const isPoly = state.category === 'polymarket';
+  const isHeat = !isPoly && state.chartType === 'heatmap';
+  const isVol = !isPoly && state.chartType === 'volume';
+  show($('#poly-detail'), isPoly);
+  show($('#heatmap-view'), isHeat);
+  show($('#chart-wrap'), !isPoly && !isHeat);
+  show($('#signal-card'), !isPoly);
+  document.querySelectorAll('#ct-buttons button').forEach((b) => { b.disabled = isPoly; });
+  document.querySelectorAll('#tf-buttons button').forEach((b) => { b.disabled = isPoly; });
+  if (isHeat) renderHeatmap();
+  if (isVol) drawVolumeProfile(); else clearVolumeProfile();
+}
+
+document.querySelectorAll('#ct-buttons button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (state.category === 'polymarket') return;
+    state.chartType = btn.dataset.ct;
+    setActiveCT();
+    applyView();
+    if (state.chartType === 'volume') { chart.timeScale().fitContent(); requestAnimationFrame(drawVolumeProfile); }
+  });
+});
+window.addEventListener('resize', () => {
+  if (state.chartType === 'volume' && state.category !== 'polymarket') drawVolumeProfile();
+});
+
+/* ----- volume profile (volume-by-price histogram overlay) ----- */
+function clearVolumeProfile() {
+  const cv = $('#vp-overlay');
+  if (cv && cv.getContext) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+}
+function drawVolumeProfile() {
+  const cv = $('#vp-overlay');
+  const wrap = $('#chart-wrap');
+  if (!cv || !wrap || !state.candles || !state.candles.length) return;
+  const rect = wrap.getBoundingClientRect();
+  cv.width = rect.width; cv.height = rect.height;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  let lo = Infinity, hi = -Infinity, totalVol = 0;
+  for (const c of state.candles) { if (c.low < lo) lo = c.low; if (c.high > hi) hi = c.high; totalVol += c.volume || 0; }
+  if (!(hi > lo)) return;
+  if (totalVol <= 0) {
+    ctx.fillStyle = '#5c6c8a'; ctx.font = '11px Consolas';
+    ctx.fillText('volume profile: no volume data for this instrument', 12, 18);
+    return;
+  }
+  const bins = 48;
+  const vol = new Array(bins).fill(0);
+  for (const c of state.candles) {
+    const mid = (c.high + c.low) / 2;
+    let b = Math.floor(((mid - lo) / (hi - lo)) * bins);
+    b = Math.max(0, Math.min(bins - 1, b));
+    vol[b] += c.volume || 0;
+  }
+  const maxVol = Math.max(...vol);
+  const axisW = 58;             // leave room for the right price axis
+  const maxW = rect.width * 0.30;
+  for (let b = 0; b < bins; b++) {
+    if (!vol[b]) continue;
+    const pLow = lo + (b / bins) * (hi - lo);
+    const pHigh = lo + ((b + 1) / bins) * (hi - lo);
+    const yTop = candleSeries.priceToCoordinate(pHigh);
+    const yBot = candleSeries.priceToCoordinate(pLow);
+    if (yTop == null || yBot == null) continue;
+    const h = Math.max(1, yBot - yTop - 1);
+    const w = (vol[b] / maxVol) * maxW;
+    ctx.fillStyle = vol[b] === maxVol ? 'rgba(240,185,11,0.55)' : 'rgba(59,130,246,0.35)'; // POC = amber
+    ctx.fillRect(rect.width - axisW - w, yTop, w, h);
+  }
+}
+
+/* ----- market heatmap (tiles by 24h % change) ----- */
+function renderHeatmap() {
+  const host = $('#heatmap-view');
+  if (!host) return;
+  const coins = state.coins || [];
+  if (!coins.length) { host.innerHTML = '<div class="loading">no data for heatmap</div>'; return; }
+  host.innerHTML = coins.map((c) => {
+    const chg = c.change24h;
+    const k = chg == null ? 0 : Math.min(1, Math.abs(chg) / 8);
+    const bg = chg == null ? 'rgba(92,108,138,.15)'
+      : chg >= 0 ? `rgba(22,199,132,${0.12 + k * 0.55})`
+      : `rgba(234,57,67,${0.12 + k * 0.55})`;
+    return `<button class="heat-tile" data-sym="${c.symbol}" style="background:${bg}">
+      <div class="ht-sym">${c.symbol}</div>
+      <div class="ht-px">${rowPrice(c)}</div>
+      <div class="ht-chg">${chg == null ? '–' : (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%'}</div>
+    </button>`;
+  }).join('');
+  host.querySelectorAll('.heat-tile').forEach((t) => t.addEventListener('click', () => {
+    const c = state.coins.find((x) => x.symbol === t.dataset.sym);
+    if (c) { state.chartType = 'candles'; setActiveCT(); selectRow(c); }
+  }));
+}
+
+/* ============================================================ */
+/* =================== POLYMARKET (in scanner) =============== */
+/* ============================================================ */
+function dedupeMarkets(arr) {
+  const seen = new Set(); const out = [];
+  for (const m of arr) { if (!seen.has(m.id)) { seen.add(m.id); out.push(m); } }
+  return out;
+}
+
+async function loadPolymarket(autoSelect = false) {
   try {
     const data = await (await fetch(getApiHost() + '/api/polymarket')).json();
     if (data && !data.error) {
       state.pmData = data;
-      renderPolymarket();
+      state.pmMarkets = dedupeMarkets([...(data.crypto || []), ...(data.trending || [])]);
+      if (state.category === 'polymarket') {
+        renderPolymarketScanner();
+        if (autoSelect && state.pmMarkets.length) selectPolyMarket(state.pmMarkets[0]);
+      }
     }
   } catch { /* keep old values */ }
 }
 
-function renderPolymarket() {
-  if (!state.pmData) return;
-  const items = state.pmData[state.pmTab] || [];
-  if (!items.length) {
-    $('#polymarket').innerHTML = `<div class="loading">no active ${state.pmTab} markets right now${state.pmTab === 'crypto' ? ' — check the TRENDING tab' : ''}</div>`;
-    return;
-  }
-  $('#polymarket').innerHTML = items
-    .map((m) => {
-      // every option of the market, sorted by implied probability
-      const opts = [...m.outcomes]
-        .sort((a, b) => (b.price ?? 0) - (a.price ?? 0))
-        .slice(0, 6)
-        .map((o) => {
-          const pctNum = o.price != null ? o.price * 100 : null;
-          return `
-          <div class="pm-opt">
-            <span class="nm" title="${o.name}">${o.name}</span>
-            <span class="bar"><i class="${pctNum != null && pctNum < 50 ? 'lo' : ''}" style="width:${pctNum ?? 0}%"></i></span>
-            <span class="pc">${pctNum != null ? pctNum.toFixed(0) + '%' : '–'}</span>
-          </div>`;
-        })
-        .join('');
-      const more = m.outcomes.length > 6 ? `<div class="pm-meta">+${m.outcomes.length - 6} more options</div>` : '';
-
-      // Quant engine estimation block
-      let quantHtml = '';
-      if (m.quant && m.quant.signal) {
-        const q = m.quant;
-        const sig = q.signal;
-        const dirClass = sig.action.startsWith('BUY') ? sig.action : 'HOLD';
-        const recText = sig.action === 'HOLD' ? 'HOLD' : `BUY ${sig.direction}`;
-        quantHtml = `
-        <div class="pm-quant-badge">
-          <span>MODEL PROB: <b>${(q.modelProbability * 100).toFixed(0)}%</b> (CI: [${(q.credibleInterval[0]*100).toFixed(0)}-${(q.credibleInterval[1]*100).toFixed(0)}%])</span>
-          <span class="edge-val ${dirClass}">EDGE: <b>${sig.edge >= 0 ? '+' : ''}${(sig.edge * 100).toFixed(1)}%</b> (${recText})</span>
-        </div>`;
-      }
-
-      // Quick trade buttons
-      const yesPrice = m.outcomes[0]?.price != null ? (m.outcomes[0].price * 100).toFixed(0) + '¢' : '–';
-      const noPrice = m.outcomes[0]?.price != null ? ((1.0 - m.outcomes[0].price) * 100).toFixed(0) + '¢' : '–';
-      const tradeRow = `
-      <div class="pm-trade-row">
-        <button class="btn-pm-action BUY-YES" data-id="${m.id}" data-q="${m.question.replace(/"/g, '&quot;')}" data-outcome="YES" data-px="${m.outcomes[0]?.price || 0.5}">BUY YES ${yesPrice}</button>
-        <button class="btn-pm-action BUY-NO" data-id="${m.id}" data-q="${m.question.replace(/"/g, '&quot;')}" data-outcome="NO" data-px="${1.0 - (m.outcomes[0]?.price || 0.5)}">BUY NO ${noPrice}</button>
-      </div>`;
-
-      return `
-      <div class="pm-item">
-        <div class="pm-q"><a href="${m.url}" target="_blank" rel="noopener">${m.question}</a></div>
-        ${opts}${more}
-        ${quantHtml}
-        ${tradeRow}
-        <div class="pm-meta">vol24h $${fmtBig(m.volume24h)} ${m.endDate ? '· ends ' + new Date(m.endDate).toLocaleDateString() : ''}</div>
-      </div>`;
-    })
-    .join('');
-
-  // Bind Polymarket quick trade buttons
-  document.querySelectorAll('.btn-pm-action').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const { id, q, outcome, px } = btn.dataset;
-      state.selectedPmMarket = { id, question: q, price: +px };
-
-      switchTab('order');
-
-      $('#pm-order-selection').innerHTML = `
-        <span class="q">${q}</span>
-        <span class="stat">Target: <b>${outcome}</b> · Current Price: <b>${(+px * 100).toFixed(0)}¢</b></span>`;
-      
-      document.querySelectorAll('#poly-outcome button').forEach((b) => b.classList.remove('active'));
-      $(`#poly-outcome button[data-outcome="${outcome}"]`).classList.add('active');
-
-      $('#btn-submit-poly').removeAttribute('disabled');
-      $('#poly-order-status').className = 'status-msg';
-      $('#poly-order-status').textContent = '';
-    });
-  });
+function renderPolymarketScanner() {
+  const markets = state.pmMarkets || [];
+  const q = $('#search').value.trim().toLowerCase();
+  const list = markets.filter((m) => !q || m.question.toLowerCase().includes(q));
+  $('.scanner-head') && ($('.scanner-head').innerHTML = '<span>MARKET</span><span>YES</span><span>EDGE</span>');
+  $('#scan-count').textContent = `(${list.length})`;
+  if (!list.length) { $('#coin-list').innerHTML = '<div class="loading">loading markets…</div>'; return; }
+  $('#coin-list').innerHTML = list.map((m) => {
+    const yes = m.outcomes[0]?.price;
+    const yesPct = yes != null ? Math.round(yes * 100) : null;
+    const edge = m.quant?.signal?.edge;
+    const edgeTxt = edge != null ? `${edge >= 0 ? '+' : ''}${(edge * 100).toFixed(0)}%` : '—';
+    const edgeCls = edge == null ? 'NEUTRAL' : edge > 0.02 ? 'BUY' : edge < -0.02 ? 'SELL' : 'NEUTRAL';
+    return `<div class="coin-row pm-row ${m.id === state.selectedPmMarket?.id ? 'selected' : ''}" data-id="${m.id}">
+      <div class="pm-qrow" title="${m.question.replace(/"/g, '&quot;')}">${m.question}</div>
+      <div class="px">${yesPct != null ? yesPct + '%' : '–'}</div>
+      <div class="badge ${edgeCls}">${edgeTxt}</div>
+    </div>`;
+  }).join('');
+  $('#coin-list').querySelectorAll('.pm-row').forEach((row) => row.addEventListener('click', () => {
+    const m = state.pmMarkets.find((x) => x.id === row.dataset.id);
+    if (m) selectPolyMarket(m);
+  }));
 }
 
-$('#pm-tab-crypto').addEventListener('click', () => {
-  state.pmTab = 'crypto';
-  $('#pm-tab-crypto').classList.add('active');
-  $('#pm-tab-trending').classList.remove('active');
-  renderPolymarket();
-});
-$('#pm-tab-trending').addEventListener('click', () => {
-  state.pmTab = 'trending';
-  $('#pm-tab-trending').classList.add('active');
-  $('#pm-tab-crypto').classList.remove('active');
-  renderPolymarket();
-});
+function selectPolyMarket(m) {
+  state.selectedPmMarket = { id: m.id, question: m.question, price: m.outcomes[0]?.price ?? 0.5, market: m };
+  state.selected = { symbol: 'POLY', source: 'polymarket', name: m.question };
+  $('#coin-title').textContent = 'POLYMARKET';
+  $('#analysis-sym').textContent = '';
+  renderPolymarketScanner();
+  applyView();
+  renderPolyDetail(m);
+  renderPolyAnalysis(m);
+}
+
+function renderPolyDetail(m) {
+  const host = $('#poly-detail');
+  if (!host) return;
+  const opts = [...m.outcomes].sort((a, b) => (b.price ?? 0) - (a.price ?? 0)).map((o) => {
+    const p = o.price != null ? o.price * 100 : null;
+    return `<div class="pm-opt"><span class="nm" title="${o.name}">${o.name}</span>
+      <span class="bar"><i class="${p != null && p < 50 ? 'lo' : ''}" style="width:${p ?? 0}%"></i></span>
+      <span class="pc">${p != null ? p.toFixed(0) + '%' : '–'}</span></div>`;
+  }).join('');
+  const yes = m.outcomes[0]?.price ?? 0.5;
+  const q = m.quant;
+  let quant = '<div class="hint">quant model is still warming up for this market…</div>';
+  if (q && q.signal) {
+    const s = q.signal;
+    const recCls = s.action.startsWith('BUY') ? (s.direction === 'YES' ? 'up' : 'down') : '';
+    quant = `<div class="poly-quant">
+      <div><span>MODEL PROB</span><b>${(q.modelProbability * 100).toFixed(1)}%</b></div>
+      <div><span>95% CI</span><b>${(q.credibleInterval[0] * 100).toFixed(0)}–${(q.credibleInterval[1] * 100).toFixed(0)}%</b></div>
+      <div><span>MONTE CARLO</span><b>${(q.mcProbability * 100).toFixed(1)}%</b></div>
+      <div><span>VOLATILITY</span><b>${(q.volatility * 100).toFixed(0)}%</b></div>
+      <div><span>DAYS LEFT</span><b>${q.daysToExpiry}</b></div>
+      <div><span>EDGE</span><b class="${s.edge >= 0 ? 'up' : 'down'}">${s.edge >= 0 ? '+' : ''}${(s.edge * 100).toFixed(1)}%</b></div>
+    </div>
+    <div class="poly-rec ${recCls}">RECOMMENDATION: ${s.action === 'HOLD' ? 'HOLD — no actionable edge'
+      : `BUY ${s.direction} · ${s.confidence}% conf${s.kellyFraction ? ' · Kelly ' + (s.kellyFraction * 100).toFixed(1) + '%' : ''}`}</div>`;
+  }
+  host.innerHTML = `
+    <div class="poly-detail-head"><a href="${m.url}" target="_blank" rel="noopener">${m.question} ↗</a></div>
+    <div class="poly-opts">${opts}</div>
+    ${quant}
+    <div class="poly-trade">
+      <button class="btn-pm-action BUY-YES" data-outcome="YES" data-px="${yes}">BUY YES ${(yes * 100).toFixed(0)}¢</button>
+      <button class="btn-pm-action BUY-NO" data-outcome="NO" data-px="${1 - yes}">BUY NO ${((1 - yes) * 100).toFixed(0)}¢</button>
+    </div>
+    <div class="pm-meta">vol24h $${fmtBig(m.volume24h)} ${m.endDate ? '· ends ' + new Date(m.endDate).toLocaleDateString() : ''}</div>`;
+  host.querySelectorAll('.btn-pm-action').forEach((b) =>
+    b.addEventListener('click', () => prepPolyOrder(m, b.dataset.outcome, +b.dataset.px)));
+}
+
+function renderPolyAnalysis(m) {
+  const q = m.quant;
+  if (!q || !q.signal) { $('#analysis').innerHTML = '<div class="loading">quant model warming up…</div>'; return; }
+  const s = q.signal;
+  const yesNow = m.outcomes[0]?.price != null ? (m.outcomes[0].price * 100).toFixed(1) + '%' : '–';
+  $('#analysis').innerHTML = `
+    <div class="ind-grid">
+      <div><span>MARKET YES</span><b>${yesNow}</b></div>
+      <div><span>MODEL PROB</span><b>${(q.modelProbability * 100).toFixed(1)}%</b></div>
+      <div><span>MONTE CARLO</span><b>${(q.mcProbability * 100).toFixed(1)}%</b></div>
+      <div><span>95% CI</span><b>${(q.credibleInterval[0] * 100).toFixed(0)}-${(q.credibleInterval[1] * 100).toFixed(0)}%</b></div>
+      <div><span>VOLATILITY</span><b>${(q.volatility * 100).toFixed(0)}%</b></div>
+      <div><span>DAYS LEFT</span><b>${q.daysToExpiry}</b></div>
+    </div>
+    <ul class="reasons">
+      <li>Quant ensemble = 60% particle filter + 40% Monte Carlo simulation</li>
+      <li>Edge ${s.edge >= 0 ? '+' : ''}${(s.edge * 100).toFixed(1)}% (model − market) → ${s.action === 'HOLD' ? 'no actionable edge' : 'BUY ' + s.direction}</li>
+      ${s.kellyFraction ? `<li>Half-Kelly stake suggestion: ${(s.kellyFraction * 100).toFixed(1)}% of bankroll</li>` : ''}
+      <li>Model confidence ${s.confidence}%</li>
+    </ul>`;
+}
+
+function prepPolyOrder(m, outcome, px) {
+  state.selectedPmMarket = { id: m.id, question: m.question, price: +px, market: m };
+  switchTab('order');
+  $('#pm-order-selection').innerHTML = `
+    <span class="q">${m.question}</span>
+    <span class="stat">Target: <b>${outcome}</b> · Price: <b>${(+px * 100).toFixed(0)}¢</b></span>`;
+  document.querySelectorAll('#poly-outcome button').forEach((b) => b.classList.remove('active'));
+  const ob = $(`#poly-outcome button[data-outcome="${outcome}"]`);
+  if (ob) { ob.classList.add('active'); activePolyOutcome = outcome; }
+  $('#btn-submit-poly').removeAttribute('disabled');
+  $('#poly-order-status').className = 'status-msg';
+  $('#poly-order-status').textContent = '';
+}
 
 /* ---------------- accounts modal ---------------- */
 const connections = { mexc: false, phantom: false, polymarket: false };
@@ -924,6 +1096,7 @@ $('#btn-save-poly-auto').addEventListener('click', async () => {
 
 /* ---------------- boot ---------------- */
 initChart();
+setActiveCT();
 loadGlobal();
 loadScan();
 loadSignal();

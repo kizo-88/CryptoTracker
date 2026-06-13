@@ -27,6 +27,7 @@
         <button data-cat="indices">INDICES</button>
         <button data-cat="klci">KLCI</button>
         <button data-cat="ipo">IPO</button>
+        <button data-cat="polymarket">POLYMARKET</button>
       </div>
       <input id="search" type="text" placeholder="search…" autocomplete="off" />
       <div class="scanner-head">
@@ -43,15 +44,28 @@
       <div id="chart-area">
         <div class="chart-header">
           <div id="coin-title" class="coin-title">BTC / USDT</div>
-          <div class="tf-buttons">
+          <div class="tf-buttons" id="tf-buttons">
             <button data-tf="5m">5M</button>
             <button data-tf="1h">1H</button>
             <button data-tf="4h" class="active">4H</button>
             <button data-tf="1d">1D</button>
           </div>
+          <div class="ct-buttons" id="ct-buttons">
+            <button data-ct="candles" class="active">CANDLES</button>
+            <button data-ct="volume">VOL PROFILE</button>
+            <button data-ct="heatmap">HEATMAP</button>
+          </div>
           <div id="chart-source" class="chart-source"></div>
         </div>
-        <div id="chart"></div>
+        <!-- candlestick chart + volume-profile overlay -->
+        <div id="chart-wrap">
+          <div id="chart"></div>
+          <canvas id="vp-overlay"></canvas>
+        </div>
+        <!-- market heatmap (shown when chart type = heatmap) -->
+        <div id="heatmap-view" class="hidden"></div>
+        <!-- polymarket selected-market detail (shown for the POLYMARKET category) -->
+        <div id="poly-detail" class="hidden"></div>
         <div id="signal-card" class="signal-card">
           <div class="loading">select a coin to analyse…</div>
         </div>
@@ -262,19 +276,11 @@
       </div>
     </section>
 
-    <!-- RIGHT: analysis + polymarket -->
+    <!-- RIGHT: technical analysis (full height) -->
     <section id="side" class="panel-col">
       <div class="panel">
-        <div class="panel-title"><img class="icon" src="asset/watch.png" alt="" />TECHNICAL ANALYSIS</div>
+        <div class="panel-title"><img class="icon" src="asset/watch.png" alt="" />TECHNICAL ANALYSIS <span id="analysis-sym" class="sub"></span></div>
         <div id="analysis" class="analysis"><div class="loading">–</div></div>
-      </div>
-      <div class="panel">
-        <div class="panel-title"><img class="icon" src="asset/pie_2.png" alt="" />POLYMARKET <span class="sub">prediction markets</span></div>
-        <div class="pm-tabs">
-          <button id="pm-tab-crypto" class="active">CRYPTO</button>
-          <button id="pm-tab-trending">TRENDING</button>
-        </div>
-        <div id="polymarket" class="pm-list"><div class="loading">loading markets…</div></div>
       </div>
     </section>
   </main>

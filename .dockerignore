@@ -1,0 +1,7 @@
+node_modules
+_corrupted_backup
+.claude
+.git
+data
+*.md
+asset

@@ -1,0 +1,35 @@
+# CryptoTracker — backend + optional Cloudflare Tunnel.
+#
+#   docker compose up -d                  # backend only (reachable on :3000)
+#   TUNNEL_TOKEN=xxx docker compose --profile tunnel up -d   # + public tunnel
+#
+# On a Synology NAS, import this in Container Manager → Project.
+services:
+  cryptotracker:
+    build: .
+    image: cryptotracker:latest
+    container_name: cryptotracker
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      # Optional: auto-connect MEXC on boot with a READ-ONLY (or no-withdraw) key
+      # - MEXC_API_KEY=your_key
+      # - MEXC_API_SECRET=your_secret
+    volumes:
+      - ./data:/app/data   # persists paper-trading balances & positions
+
+  # Cloudflare Tunnel — exposes the backend on your Cloudflare domain with no
+  # open ports. Create a tunnel in Zero Trust → Networks → Tunnels, point a
+  # public hostname at http://cryptotracker:3000, then set TUNNEL_TOKEN.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cryptotracker-tunnel
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - cryptotracker

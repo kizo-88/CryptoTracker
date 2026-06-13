@@ -1,9 +1,9 @@
 // Signal engine: scores trend + momentum + volatility off the candles and
 // produces a LONG/SHORT/NEUTRAL call with ATR-based entry / stop-loss /
 // take-profit levels, plus human-readable reasoning.
-const { ema, rsi, macd, atr, bollinger, swingLevels } = require('./indicators');
+const { ema, rsi, macd, atr, bollinger, swingLevels, stochastic, supportResistance } = require('./indicators');
 
-const MAX_SCORE = 5.5;
+const MAX_SCORE = 7;
 
 function last(arr) {
   for (let i = arr.length - 1; i >= 0; i--) if (arr[i] != null) return arr[i];
@@ -26,10 +26,13 @@ function buildSignal(candles) {
   const ema50 = ema(closes, 50);
   const ema200 = ema(closes, 200);
   const rsi14 = rsi(closes, 14);
+  const rsi5arr = rsi(closes, 5);
   const { line: macdLine, signal: macdSignal, histogram } = macd(closes);
   const atr14 = atr(candles, 14);
   const bb = bollinger(closes, 20, 2);
   const { swingHigh, swingLow } = swingLevels(candles, 20, 1);
+  const stoch = stochastic(candles, 8, 3, 3); // %K(8) smoothed 3, %D 3
+  const sr = supportResistance(candles, { left: 3, right: 3, maxLevels: 4 });
 
   const v = {
     price,
@@ -37,6 +40,7 @@ function buildSignal(candles) {
     ema50: last(ema50),
     ema200: last(ema200),
     rsi: last(rsi14),
+    rsi5: last(rsi5arr),
     macdLine: last(macdLine),
     macdSignal: last(macdSignal),
     macdHist: last(histogram),
@@ -46,6 +50,8 @@ function buildSignal(candles) {
     bbLower: last(bb.lower),
     swingHigh,
     swingLow,
+    stochK: last(stoch.k),
+    stochD: last(stoch.d),
   };
 
   let score = 0;
@@ -80,6 +86,23 @@ function buildSignal(candles) {
   if (v.macdLine != null && v.macdSignal != null) {
     if (v.macdLine > v.macdSignal) { score += 0.5; reasons.push(`MACD line above signal line`); }
     else { score -= 0.5; reasons.push(`MACD line below signal line`); }
+  }
+
+  // --- Fast momentum: RSI(5) with 10 / 90 bands ---
+  if (v.rsi5 != null) {
+    if (v.rsi5 >= 90) { score += 0.25; reasons.push(`RSI(5) ${v.rsi5.toFixed(1)} — above 90, very overbought (stretched)`); }
+    else if (v.rsi5 > 50) { score += 0.5; reasons.push(`RSI(5) ${v.rsi5.toFixed(1)} — fast momentum up`); }
+    else if (v.rsi5 <= 10) { score -= 0.25; reasons.push(`RSI(5) ${v.rsi5.toFixed(1)} — below 10, very oversold (bounce watch)`); }
+    else { score -= 0.5; reasons.push(`RSI(5) ${v.rsi5.toFixed(1)} — fast momentum down`); }
+  }
+
+  // --- Stochastic (8,3,3) with 20 / 80 bands ---
+  if (v.stochK != null && v.stochD != null) {
+    const cross = v.stochK > v.stochD ? 'bull' : 'bear';
+    if (v.stochK >= 80) { score += 0.25; reasons.push(`Stoch %K ${v.stochK.toFixed(1)} — overbought (>80)`); }
+    else if (v.stochK <= 20) { score -= 0.25; reasons.push(`Stoch %K ${v.stochK.toFixed(1)} — oversold (<20)`); }
+    if (cross === 'bull') { score += 0.5; reasons.push(`Stoch %K above %D — bullish cross`); }
+    else { score -= 0.5; reasons.push(`Stoch %K below %D — bearish cross`); }
   }
 
   // --- Volatility context (doesn't move score, informs the reader) ---
@@ -138,6 +161,9 @@ function buildSignal(candles) {
     riskPct: round((Math.abs(entry - stopLoss) / entry) * 100, 100),
     indicators: {
       rsi: v.rsi != null ? +v.rsi.toFixed(1) : null,
+      rsi5: v.rsi5 != null ? +v.rsi5.toFixed(1) : null,
+      stochK: v.stochK != null ? +v.stochK.toFixed(1) : null,
+      stochD: v.stochD != null ? +v.stochD.toFixed(1) : null,
       macdLine: round(v.macdLine, price),
       macdSignal: round(v.macdSignal, price),
       macdHist: round(v.macdHist, price),
@@ -149,6 +175,10 @@ function buildSignal(candles) {
       bbLower: round(v.bbLower, price),
       swingHigh: round(swingHigh, price),
       swingLow: round(swingLow, price),
+    },
+    levels: {
+      support: sr.support.map((l) => ({ price: round(l.price, price), strength: l.strength })),
+      resistance: sr.resistance.map((l) => ({ price: round(l.price, price), strength: l.strength })),
     },
     reasons,
     overlays: {

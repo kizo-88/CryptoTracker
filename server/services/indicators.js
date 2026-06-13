@@ -117,4 +117,81 @@ function swingLevels(candles, lookback = 20, skip = 1) {
   return { swingHigh: high, swingLow: low };
 }
 
-module.exports = { sma, ema, rsi, macd, atr, bollinger, swingLevels };
+// Stochastic oscillator. Defaults give the "8 3 3" slow stochastic:
+// %K over kPeriod, smoothed by kSmooth (SMA), %D = SMA of %K over dPeriod.
+function stochastic(candles, kPeriod = 8, kSmooth = 3, dPeriod = 3) {
+  const n = candles.length;
+  const rawK = new Array(n).fill(null);
+  for (let i = kPeriod - 1; i < n; i++) {
+    let hh = -Infinity, ll = Infinity;
+    for (let j = i - kPeriod + 1; j <= i; j++) {
+      if (candles[j].high > hh) hh = candles[j].high;
+      if (candles[j].low < ll) ll = candles[j].low;
+    }
+    rawK[i] = hh === ll ? 50 : (100 * (candles[i].close - ll)) / (hh - ll);
+  }
+  const sma = (arr, p) => {
+    const out = new Array(arr.length).fill(null);
+    let sum = 0, count = 0;
+    const window = [];
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i] == null) { window.length = 0; sum = 0; count = 0; continue; }
+      window.push(arr[i]); sum += arr[i]; count++;
+      if (window.length > p) { sum -= window.shift(); count--; }
+      if (count === p) out[i] = sum / p;
+    }
+    return out;
+  };
+  const k = sma(rawK, kSmooth); // slowed %K
+  const d = sma(k, dPeriod);    // %D
+  return { k, d };
+}
+
+// Support / resistance via fractal pivots, clustered into price levels.
+// Returns levels sorted by distance to the latest close, split into
+// support (below price) and resistance (above price).
+function supportResistance(candles, { left = 3, right = 3, maxLevels = 4 } = {}) {
+  const n = candles.length;
+  if (n < left + right + 1) return { support: [], resistance: [] };
+  const price = candles[n - 1].close;
+  const pivots = [];
+  for (let i = left; i < n - right; i++) {
+    let isHigh = true, isLow = true;
+    for (let j = i - left; j <= i + right; j++) {
+      if (j === i) continue;
+      if (candles[j].high >= candles[i].high) isHigh = false;
+      if (candles[j].low <= candles[i].low) isLow = false;
+    }
+    if (isHigh) pivots.push(candles[i].high);
+    if (isLow) pivots.push(candles[i].low);
+  }
+  if (!pivots.length) return { support: [], resistance: [] };
+
+  // cluster pivots that sit within ~0.6% of each other into one level
+  const tol = price * 0.006;
+  pivots.sort((a, b) => a - b);
+  const clusters = [];
+  let group = [pivots[0]];
+  for (let i = 1; i < pivots.length; i++) {
+    if (pivots[i] - group[group.length - 1] <= tol) group.push(pivots[i]);
+    else { clusters.push(group); group = [pivots[i]]; }
+  }
+  clusters.push(group);
+
+  const levels = clusters.map((g) => ({
+    price: g.reduce((a, b) => a + b, 0) / g.length,
+    strength: g.length, // how many pivots reinforce this level
+  }));
+
+  const support = levels
+    .filter((l) => l.price < price)
+    .sort((a, b) => b.price - a.price) // nearest below first
+    .slice(0, maxLevels);
+  const resistance = levels
+    .filter((l) => l.price >= price)
+    .sort((a, b) => a.price - b.price) // nearest above first
+    .slice(0, maxLevels);
+  return { support, resistance };
+}
+
+module.exports = { sma, ema, rsi, macd, atr, bollinger, swingLevels, stochastic, supportResistance };
