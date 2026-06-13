@@ -179,10 +179,30 @@ body {
 .ct-buttons button.active { background: var(--amber); color: #06090f; border-color: var(--amber); }
 .ct-buttons button:disabled { opacity: .4; cursor: not-allowed; }
 
-/* chart + volume-profile overlay */
-#chart-wrap { position: relative; flex: 1 1 auto; min-height: 200px; }
+/* chart + volume-profile / SMC-zone overlays */
+#chart-wrap { position: relative; flex: 1 1 auto; min-height: 160px; }
 #chart { position: absolute; inset: 0; }
-#vp-overlay { position: absolute; inset: 0; pointer-events: none; }
+#vp-overlay, #zone-overlay { position: absolute; inset: 0; pointer-events: none; }
+
+#zone-legend {
+  position: absolute; top: 6px; left: 8px; display: flex; gap: 10px; flex-wrap: wrap;
+  font-size: 9px; color: var(--dim); background: rgba(6,9,15,.55);
+  padding: 3px 7px; border-radius: 3px; pointer-events: none; z-index: 2;
+}
+#zone-legend span { display: inline-flex; align-items: center; gap: 4px; }
+#zone-legend i { width: 9px; height: 9px; border-radius: 2px; opacity: .85; display: inline-block; }
+
+/* oscillator panels (RSI, Stoch) under the main chart */
+#osc-panels { display: flex; flex-direction: column; flex: 0 0 auto; }
+.osc-row { position: relative; height: 74px; border-top: 1px solid var(--border); }
+.osc-chart { position: absolute; inset: 0; }
+.osc-label {
+  position: absolute; top: 3px; left: 6px; z-index: 2; font-size: 9px;
+  color: var(--dim); letter-spacing: .5px; pointer-events: none;
+}
+
+#overlay-toggles { margin-left: 6px; }
+#overlay-toggles button.active { background: var(--panel2); color: var(--blue); border-color: var(--blue); }
 
 /* generic show/hide */
 .hidden { display: none !important; }

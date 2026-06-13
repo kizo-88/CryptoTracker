@@ -55,12 +55,29 @@
             <button data-ct="volume">VOL PROFILE</button>
             <button data-ct="bookmap">BOOKMAP</button>
           </div>
+          <div class="ct-buttons" id="overlay-toggles">
+            <button data-tog="zones" class="active">ZONES</button>
+            <button data-tog="osc" class="active">OSC</button>
+          </div>
           <div id="chart-source" class="chart-source"></div>
         </div>
-        <!-- candlestick chart + volume-profile overlay -->
+        <!-- candlestick chart + volume-profile / SMC-zone overlays -->
         <div id="chart-wrap">
           <div id="chart"></div>
           <canvas id="vp-overlay"></canvas>
+          <canvas id="zone-overlay"></canvas>
+          <div id="zone-legend">
+            <span><i style="background:#16c784"></i>Support</span>
+            <span><i style="background:#ea3943"></i>Resistance</span>
+            <span><i style="background:#f0b90b"></i>OB</span>
+            <span><i style="background:#3b82f6"></i>FVG</span>
+            <span><i style="background:#a855f7"></i>IFVG</span>
+          </div>
+        </div>
+        <!-- visual oscillator panels (RSI, Stochastic) -->
+        <div id="osc-panels">
+          <div class="osc-row"><div class="osc-label">RSI 14</div><div id="osc-rsi" class="osc-chart"></div></div>
+          <div class="osc-row"><div class="osc-label">STOCH 8·3·3</div><div id="osc-stoch" class="osc-chart"></div></div>
         </div>
         <!-- bookmap-style time × price liquidity/volume heatmap -->
         <div id="bookmap-view" class="hidden">

@@ -2,6 +2,7 @@
 // produces a LONG/SHORT/NEUTRAL call with ATR-based entry / stop-loss /
 // take-profit levels, plus human-readable reasoning.
 const { ema, rsi, macd, atr, bollinger, swingLevels, stochastic, supportResistance } = require('./indicators');
+const { smcZones } = require('./smc');
 
 const MAX_SCORE = 7;
 
@@ -149,6 +150,13 @@ function buildSignal(candles) {
   const times = candles.map((c) => c.time);
   const seriesOf = (arr) =>
     arr.map((val, i) => (val != null ? { time: times[i], value: round(val, price) } : null)).filter(Boolean);
+  // oscillators live on a fixed 0–100 scale, so round to 2dp (not price-relative)
+  const oscSeriesOf = (arr) =>
+    arr.map((val, i) => (val != null ? { time: times[i], value: +val.toFixed(2) } : null)).filter(Boolean);
+
+  // round a SMC / S/R zone band's prices for the wire
+  const roundZone = (z) => ({ ...z, top: round(z.top, price), bottom: round(z.bottom, price) });
+  const zones = smcZones(candles);
 
   return {
     direction,
@@ -177,14 +185,26 @@ function buildSignal(candles) {
       swingLow: round(swingLow, price),
     },
     levels: {
-      support: sr.support.map((l) => ({ price: round(l.price, price), strength: l.strength })),
-      resistance: sr.resistance.map((l) => ({ price: round(l.price, price), strength: l.strength })),
+      support: sr.support.map((l) => ({ price: round(l.price, price), strength: l.strength, lo: round(l.lo, price), hi: round(l.hi, price) })),
+      resistance: sr.resistance.map((l) => ({ price: round(l.price, price), strength: l.strength, lo: round(l.lo, price), hi: round(l.hi, price) })),
+    },
+    // Smart-Money zones drawn as boxes on the chart (Order Blocks, FVGs, Inverse FVGs)
+    zones: {
+      ob: zones.ob.map(roundZone),
+      fvg: zones.fvg.map(roundZone),
+      ifvg: zones.ifvg.map(roundZone),
     },
     reasons,
     overlays: {
       ema20: seriesOf(ema20),
       ema50: seriesOf(ema50),
       ema200: seriesOf(ema200),
+    },
+    // time-series for the visual oscillator panels (RSI, Stochastic)
+    osc: {
+      rsi: oscSeriesOf(rsi14),
+      stochK: oscSeriesOf(stoch.k),
+      stochD: oscSeriesOf(stoch.d),
     },
   };
 }

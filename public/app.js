@@ -6,10 +6,13 @@ const state = {
   category: 'crypto', // crypto | forex | indices | klci | ipo
   selected: { symbol: 'BTC', source: 'crypto', binance: 'BTCUSDT', id: 'bitcoin', name: 'Bitcoin' },
   interval: '4h',
+  chartType: 'candles', // candles | volume | bookmap
   pmTab: 'crypto',
   pmData: null,
   selectedSignal: null,
   selectedPmMarket: null, // holds { id, question, price } for trading
+  showZones: true,        // SMC / S-R zone boxes on the chart
+  showOsc: true,          // RSI + Stochastic oscillator panels
 };
 
 // Returns the backend host URL the dashboard should call.
@@ -151,6 +154,8 @@ document.querySelectorAll('#scanner-cats button').forEach((btn) => {
 
 /* ---------------- chart ---------------- */
 let chart, candleSeries, emaSeries = {}, priceLines = [];
+// oscillator sub-charts (RSI, Stochastic) — separate synced chart instances
+let oscRsi, oscRsiSeries, oscStoch, oscStochK, oscStochD, oscReady = false;
 
 function initChart() {
   chart = LightweightCharts.createChart($('#chart'), {
@@ -169,6 +174,118 @@ function initChart() {
   emaSeries.ema20 = chart.addLineSeries({ color: '#f0b90b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'EMA20' });
   emaSeries.ema50 = chart.addLineSeries({ color: '#3b82f6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'EMA50' });
   emaSeries.ema200 = chart.addLineSeries({ color: '#a855f7', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'EMA200' });
+
+  // redraw the zone boxes whenever the chart is panned/zoomed, and keep the
+  // oscillator panels' time axis locked to the main chart
+  chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+    if (range && oscReady) {
+      oscRsi.timeScale().setVisibleLogicalRange(range);
+      oscStoch.timeScale().setVisibleLogicalRange(range);
+    }
+    drawZones();
+  });
+  initOsc();
+}
+
+/* ----- oscillator panels (RSI, Stochastic) ----- */
+function initOsc() {
+  const elR = $('#osc-rsi'), elS = $('#osc-stoch');
+  if (!elR || !elS || typeof LightweightCharts === 'undefined') return;
+  const base = () => ({
+    layout: { background: { color: 'transparent' }, textColor: '#5c6c8a', fontFamily: 'Consolas, monospace' },
+    grid: { vertLines: { color: '#0e1726' }, horzLines: { color: '#0e1726' } },
+    rightPriceScale: { borderColor: '#1e293f', minimumWidth: 60 },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    handleScroll: false, handleScale: false, // the main chart drives the time axis
+    autoSize: true,
+  });
+  const pin0to100 = { autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) };
+  const refLine = (series, price, color) =>
+    series.createPriceLine({ price, color, lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, axisLabelVisible: true, title: String(price) });
+
+  oscRsi = LightweightCharts.createChart(elR, { ...base(), timeScale: { visible: false, borderColor: '#1e293f' } });
+  oscRsiSeries = oscRsi.addLineSeries({ color: '#a855f7', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, ...pin0to100 });
+  refLine(oscRsiSeries, 70, '#ea3943'); refLine(oscRsiSeries, 50, '#33415c'); refLine(oscRsiSeries, 30, '#16c784');
+
+  oscStoch = LightweightCharts.createChart(elS, { ...base(), timeScale: { visible: true, timeVisible: true, borderColor: '#1e293f' } });
+  oscStochK = oscStoch.addLineSeries({ color: '#3b82f6', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: '%K', ...pin0to100 });
+  oscStochD = oscStoch.addLineSeries({ color: '#f0b90b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: '%D' });
+  refLine(oscStochK, 80, '#ea3943'); refLine(oscStochK, 20, '#16c784');
+  oscReady = true;
+}
+
+// push the latest oscillator series and align the time axis to the main chart
+function setOscData(osc) {
+  if (!oscReady || !osc) return;
+  oscRsiSeries.setData(osc.rsi || []);
+  oscStochK.setData(osc.stochK || []);
+  oscStochD.setData(osc.stochD || []);
+  const range = chart.timeScale().getVisibleLogicalRange();
+  if (range) {
+    oscRsi.timeScale().setVisibleLogicalRange(range);
+    oscStoch.timeScale().setVisibleLogicalRange(range);
+  }
+}
+
+/* ----- SMC / S-R zone boxes drawn on a canvas overlay ----- */
+const ZONE_COLORS = {
+  support:   { fill: 'rgba(22,199,132,0.10)',  line: 'rgba(22,199,132,0.60)' },
+  resistance:{ fill: 'rgba(234,57,67,0.10)',   line: 'rgba(234,57,67,0.60)' },
+  ob:        { fill: 'rgba(240,185,11,0.10)',  line: 'rgba(240,185,11,0.70)' },
+  fvg:       { fill: 'rgba(59,130,246,0.10)',  line: 'rgba(59,130,246,0.65)' },
+  ifvg:      { fill: 'rgba(168,85,247,0.12)',  line: 'rgba(168,85,247,0.70)' },
+};
+function clearZones() {
+  const cv = $('#zone-overlay');
+  if (cv && cv.getContext) cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+}
+function drawZones() {
+  const cv = $('#zone-overlay'), wrap = $('#chart-wrap');
+  if (!cv || !wrap) return;
+  const rect = wrap.getBoundingClientRect();
+  cv.width = rect.width; cv.height = rect.height;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const sig = state.selectedSignal;
+  const inCandleView = !(state.chartType === 'volume' || state.chartType === 'bookmap') && state.category !== 'polymarket';
+  if (!state.showZones || !inCandleView || !sig) return;
+
+  const axisW = chart.priceScale('right').width() || 58; // real right-axis width
+  const xR = rect.width - axisW;
+  const ts = chart.timeScale();
+  ctx.font = '9px Consolas';
+
+  const box = (top, bottom, time, type, label, dir) => {
+    let yT = candleSeries.priceToCoordinate(top);
+    let yB = candleSeries.priceToCoordinate(bottom);
+    if (yT == null || yB == null) return;
+    if (yT > yB) { const t = yT; yT = yB; yB = t; }
+    let xL = ts.timeToCoordinate(time);
+    if (xL == null) xL = 0;          // started before the visible range → clamp left
+    xL = Math.max(0, xL);
+    if (xR <= xL) return;
+    const h = Math.max(1.5, yB - yT);
+    const c = ZONE_COLORS[type];
+    ctx.fillStyle = c.fill; ctx.fillRect(xL, yT, xR - xL, h);
+    ctx.strokeStyle = c.line; ctx.lineWidth = 1; ctx.strokeRect(xL + 0.5, yT + 0.5, xR - xL - 1, h - 1);
+    ctx.fillStyle = c.line;
+    const tag = dir ? `${label} ${dir === 'bull' ? '▲' : '▼'}` : label;
+    ctx.fillText(tag, Math.min(xR - 34, xL + 3), yT + (h >= 12 ? 10 : -2));
+  };
+
+  const lv = sig.levels || { support: [], resistance: [] };
+  lv.support.forEach((l) => box(l.hi ?? l.price, l.lo ?? l.price, ts ? lastTime() : null, 'support', 'S'));
+  lv.resistance.forEach((l) => box(l.hi ?? l.price, l.lo ?? l.price, lastTime(), 'resistance', 'R'));
+  const z = sig.zones || { ob: [], fvg: [], ifvg: [] };
+  z.fvg.forEach((g) => box(g.top, g.bottom, g.time, 'fvg', 'FVG', g.kind));
+  z.ifvg.forEach((g) => box(g.top, g.bottom, g.time, 'ifvg', 'IFVG', g.kind));
+  z.ob.forEach((o) => box(o.top, o.bottom, o.time, 'ob', 'OB', o.kind));
+}
+// S/R levels have no explicit start time — anchor their boxes near the left so
+// they span the whole visible window.
+function lastTime() {
+  const r = chart.timeScale().getVisibleRange();
+  return r ? r.from : (state.candles && state.candles[0] ? state.candles[0].time : null);
 }
 
 function setPriceLines(sig, lastTime) {
@@ -185,13 +302,7 @@ function setPriceLines(sig, lastTime) {
   mk(sig.entry, '#3b82f6', `◄ ENTRY ${sig.lean}`, LightweightCharts.LineStyle.Solid, 2);
   mk(sig.stopLoss, '#ea3943', 'SL');
   sig.takeProfits.forEach((tp) => mk(tp.price, '#16c784', tp.label));
-  // support / resistance (dotted, muted) — drawn from the signal's S/R clusters
-  if (sig.levels) {
-    sig.levels.resistance.forEach((l, i) =>
-      mk(l.price, '#9a6a2f', `R${i + 1}`, LightweightCharts.LineStyle.Dotted));
-    sig.levels.support.forEach((l, i) =>
-      mk(l.price, '#2f7a9a', `S${i + 1}`, LightweightCharts.LineStyle.Dotted));
-  }
+  // S/R are now drawn as shaded zone boxes (see drawZones), not dotted lines.
   if (lastTime) {
     candleSeries.setMarkers([
       {
@@ -235,6 +346,15 @@ async function loadSignal() {
     emaSeries.ema200.setData(data.signal.overlays.ema200);
     chart.timeScale().fitContent();
     setPriceLines(data.signal, data.candles[data.candles.length - 1]?.time);
+    setOscData(data.signal.osc);
+    drawZones();
+    // the chart paints on the next frame — redraw zones & re-align the osc panels
+    // once coordinates are available (the synchronous pass above runs pre-paint)
+    requestAnimationFrame(() => {
+      const r = chart.timeScale().getVisibleLogicalRange();
+      if (r && oscReady) { oscRsi.timeScale().setVisibleLogicalRange(r); oscStoch.timeScale().setVisibleLogicalRange(r); }
+      drawZones();
+    });
     if (state.chartType === 'volume') drawVolumeProfile();
     else if (state.chartType === 'bookmap') renderBookmap();
 
@@ -334,14 +454,24 @@ function applyView() {
   const isPoly = state.category === 'polymarket';
   const isBook = !isPoly && state.chartType === 'bookmap';
   const isVol = !isPoly && state.chartType === 'volume';
+  const candleView = !isPoly && !isBook && !isVol;
   show($('#poly-detail'), isPoly);
   show($('#bookmap-view'), isBook);
   show($('#chart-wrap'), !isPoly && !isBook);
+  show($('#osc-panels'), candleView && state.showOsc);
   show($('#signal-card'), !isPoly);
   document.querySelectorAll('#ct-buttons button').forEach((b) => { b.disabled = isPoly; });
   document.querySelectorAll('#tf-buttons button').forEach((b) => { b.disabled = isPoly; });
   if (isBook) renderBookmap();
   if (isVol) drawVolumeProfile(); else clearVolumeProfile();
+  if (candleView) {
+    drawZones();
+    // osc panels may have just become visible — let them re-measure, then resync
+    if (state.showOsc && oscReady) requestAnimationFrame(() => {
+      const r = chart.timeScale().getVisibleLogicalRange();
+      if (r) { oscRsi.timeScale().setVisibleLogicalRange(r); oscStoch.timeScale().setVisibleLogicalRange(r); }
+    });
+  } else { clearZones(); }
 }
 
 document.querySelectorAll('#ct-buttons button').forEach((btn) => {
@@ -353,10 +483,19 @@ document.querySelectorAll('#ct-buttons button').forEach((btn) => {
     if (state.chartType === 'volume') { chart.timeScale().fitContent(); requestAnimationFrame(drawVolumeProfile); }
   });
 });
+// independent overlay toggles: ZONES (SMC/S-R boxes) and OSC (RSI/Stoch panels)
+document.querySelectorAll('#overlay-toggles button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const on = btn.classList.toggle('active');
+    if (btn.dataset.tog === 'zones') { state.showZones = on; show($('#zone-legend'), on); drawZones(); }
+    else if (btn.dataset.tog === 'osc') { state.showOsc = on; applyView(); }
+  });
+});
 window.addEventListener('resize', () => {
   if (state.category === 'polymarket') return;
   if (state.chartType === 'volume') drawVolumeProfile();
   else if (state.chartType === 'bookmap') renderBookmap();
+  else drawZones();
 });
 
 /* ----- volume profile (volume-by-price histogram overlay) ----- */

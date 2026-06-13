@@ -178,10 +178,19 @@ function supportResistance(candles, { left = 3, right = 3, maxLevels = 4 } = {})
   }
   clusters.push(group);
 
-  const levels = clusters.map((g) => ({
-    price: g.reduce((a, b) => a + b, 0) / g.length,
-    strength: g.length, // how many pivots reinforce this level
-  }));
+  const minBand = price * 0.0015; // floor so a thin cluster still draws a visible box
+  const levels = clusters.map((g) => {
+    const lo = Math.min(...g);
+    const hi = Math.max(...g);
+    const mid = g.reduce((a, b) => a + b, 0) / g.length;
+    const pad = Math.max(minBand - (hi - lo), 0) / 2;
+    return {
+      price: mid,
+      strength: g.length,    // how many pivots reinforce this level
+      lo: lo - pad,          // zone band (for drawing S/R as a box, not just a line)
+      hi: hi + pad,
+    };
+  });
 
   const support = levels
     .filter((l) => l.price < price)
