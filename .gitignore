@@ -3,6 +3,7 @@ node_modules/
 _corrupted_backup/
 .claude/
 /asset/
+/data/
 # Firebase
 .firebase/
 *-debug.log

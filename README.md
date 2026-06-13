@@ -28,6 +28,30 @@ TradingView-style charts with **entry / stop-loss / take-profit** levels.
     value, open positions and PnL (public data API, read-only).
 - **Global stats bar** — total market cap, 24h volume, BTC/ETH dominance.
 
+### Trading hub (bottom panel)
+
+- **Manual trading** — place orders directly from the dashboard:
+  - **Crypto** — paper trading (simulated fills vs live prices) or **live MEXC
+    spot** market orders. One-click *auto-fill from signal* drops the engine's
+    entry / SL / TP straight into the order ticket. Open positions are tracked
+    with live unrealized PnL and auto-closed when SL/TP is hit.
+  - **Polymarket** — BUY YES / BUY NO buttons on every market route the
+    contract into the order ticket (paper trading; live CLOB is scaffolded).
+- **Quant engine** (Fincept-style, pure JS) — for each Polymarket contract a
+  **Particle Filter** + **Monte Carlo** ensemble estimates the "true"
+  probability, with a **credible interval**, volatility estimate and
+  **Kelly-criterion edge** detection. Markets show a model-probability badge
+  and a BUY YES/NO edge recommendation.
+- **Auto-trader** — two independent bots (crypto + Polymarket) that run on a
+  timer, scan the market, and open positions automatically when the signal
+  confidence / quant edge clears your threshold. Fully configurable
+  (mode, interval, min-confidence/edge, size, max positions) with a live
+  runtime log. **Defaults to paper mode** — live mode is opt-in per bot.
+
+> ⚠ **Safety:** everything defaults to **paper trading**. Live crypto orders
+> require a MEXC key *with trade permission* and explicit `LIVE` selection.
+> Start in paper mode and understand the bot before risking real funds.
+
 No API keys required for market data — all sources are free public endpoints.
 
 ## Run locally
@@ -48,6 +72,11 @@ npm start          # http://localhost:3000
 | `GET /api/polymarket/positions?address=0x…` | Polymarket account positions + PnL |
 | `POST /api/connect/mexc` | Connect MEXC (`{key, secret}`, kept in memory) |
 | `GET /api/mexc/account` | MEXC spot balances with USD estimates |
+| `GET /api/portfolio` | Open positions + balances + PnL (crypto & Polymarket) |
+| `POST /api/trade/open` | Open a position (`{market, …}`, paper or live) |
+| `POST /api/trade/close` | Close a position (`{market, id, price}`) |
+| `GET /api/autotrade/status` | Both bots' config + runtime log |
+| `POST /api/autotrade/configure` | Update a bot (`{market, config}`) |
 
 ## Disclaimer
 
