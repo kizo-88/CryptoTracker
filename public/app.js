@@ -3,7 +3,8 @@ const $ = (sel) => document.querySelector(sel);
 
 const state = {
   coins: [],
-  selected: { symbol: 'BTC', binance: 'BTCUSDT', id: 'bitcoin', name: 'Bitcoin' },
+  category: 'crypto', // crypto | forex | indices | klci | ipo
+  selected: { symbol: 'BTC', source: 'crypto', binance: 'BTCUSDT', id: 'bitcoin', name: 'Bitcoin' },
   interval: '4h',
   pmTab: 'crypto',
   pmData: null,
@@ -36,6 +37,22 @@ function pct(v) {
   const cls = v >= 0 ? 'up' : 'down';
   return `<span class="${cls}">${v >= 0 ? '+' : ''}${v.toFixed(2)}%</span>`;
 }
+// Price label for a scanner row — crypto gets "$", tradfi shows the raw quote.
+function rowPrice(c) {
+  if (c.price == null) return '–';
+  const v = c.price;
+  const num =
+    v >= 1000 ? v.toLocaleString('en-US', { maximumFractionDigits: 2 })
+    : v >= 100 ? v.toFixed(2)
+    : v >= 1 ? v.toFixed(4)
+    : v.toFixed(5);
+  return c.source === 'yahoo' ? num : '$' + fmtPrice(v);
+}
+// Quote-pair suffix shown beside the chart title.
+function quoteSuffix(sel) {
+  if (sel.source === 'yahoo') return '';
+  return ' / USDT';
+}
 
 /* ---------------- clock ---------------- */
 setInterval(() => {
@@ -56,14 +73,27 @@ async function loadGlobal() {
 }
 
 /* ---------------- scanner ---------------- */
-async function loadScan() {
+async function loadScan(autoSelectFirst = false) {
   try {
-    const coins = await (await fetch(getApiHost() + '/api/scan')).json();
+    const coins = await (await fetch(getApiHost() + `/api/scan?category=${state.category}`)).json();
     if (Array.isArray(coins)) {
       state.coins = coins;
       renderScanner();
+      if (autoSelectFirst && coins.length) selectRow(coins[0]);
     }
   } catch { /* keep old values */ }
+}
+
+// Build state.selected from a scanner row, branching on data source.
+function selectRow(c) {
+  if (c.source === 'yahoo') {
+    state.selected = { symbol: c.symbol, source: 'yahoo', yahoo: c.yahoo, name: c.name };
+  } else {
+    state.selected = { symbol: c.symbol, source: 'crypto', binance: c.binanceSymbol, id: c.id, name: c.name };
+    if ($('#order-crypto-symbol')) $('#order-crypto-symbol').textContent = c.symbol;
+  }
+  renderScanner();
+  loadSignal();
 }
 
 function renderScanner() {
@@ -77,7 +107,7 @@ function renderScanner() {
       (c) => `
     <div class="coin-row ${c.symbol === state.selected.symbol ? 'selected' : ''}" data-sym="${c.symbol}">
       <div><div class="sym">${c.symbol}</div><div class="name">${c.name}</div></div>
-      <div class="px">$${fmtPrice(c.price)}</div>
+      <div class="px">${rowPrice(c)}</div>
       <div class="chg">${pct(c.change24h)}</div>
       <div class="badge ${c.quickSignal}">${c.quickSignal === 'NEUTRAL' ? 'WAIT' : c.quickSignal}</div>
     </div>`
@@ -86,18 +116,25 @@ function renderScanner() {
   document.querySelectorAll('.coin-row').forEach((row) => {
     row.addEventListener('click', () => {
       const c = state.coins.find((x) => x.symbol === row.dataset.sym);
-      if (!c) return;
-      state.selected = { symbol: c.symbol, binance: c.binanceSymbol, id: c.id, name: c.name };
-      renderScanner();
-      loadSignal();
-      if ($('#order-crypto-symbol')) {
-        $('#order-crypto-symbol').textContent = c.symbol;
-      }
+      if (c) selectRow(c);
     });
   });
 }
 
 $('#search').addEventListener('input', renderScanner);
+
+/* ---------------- scanner category tabs ---------------- */
+document.querySelectorAll('#scanner-cats button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (state.category === btn.dataset.cat) return;
+    document.querySelectorAll('#scanner-cats button').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.category = btn.dataset.cat;
+    $('#search').value = '';
+    $('#coin-list').innerHTML = '<div class="loading">loading ' + state.category + '…</div>';
+    loadScan(true); // auto-select the first instrument in the new category
+  });
+});
 
 /* ---------------- chart ---------------- */
 let chart, candleSeries, emaSeries = {}, priceLines = [];
@@ -152,12 +189,16 @@ function setPriceLines(sig, lastTime) {
 let signalReq = 0;
 async function loadSignal() {
   const reqId = ++signalReq;
-  const { symbol, binance, id, name } = state.selected;
-  $('#coin-title').textContent = `${symbol} / USDT`;
+  const sel = state.selected;
+  const { symbol, name } = sel;
+  $('#coin-title').textContent = `${symbol}${quoteSuffix(sel)}`;
   $('#signal-card').innerHTML = '<div class="loading">analysing…</div>';
   $('#analysis').innerHTML = '<div class="loading">computing indicators…</div>';
   try {
-    const res = await fetch(getApiHost() + `/api/signal?binance=${binance}&id=${id}&interval=${state.interval}`);
+    const url = sel.source === 'yahoo'
+      ? getApiHost() + `/api/signal?source=yahoo&symbol=${encodeURIComponent(sel.yahoo)}&interval=${state.interval}`
+      : getApiHost() + `/api/signal?binance=${sel.binance}&id=${sel.id}&interval=${state.interval}`;
+    const res = await fetch(url);
     const data = await res.json();
     if (reqId !== signalReq) return;
     if (data.error) throw new Error(data.error);
@@ -692,6 +733,12 @@ $('#btn-autofill-crypto').addEventListener('click', () => {
 });
 
 $('#btn-submit-crypto').addEventListener('click', async () => {
+  const statusGuard = $('#crypto-order-status');
+  if (state.selected.source === 'yahoo') {
+    statusGuard.className = 'status-msg error';
+    statusGuard.textContent = 'Forex / indices / KLCI are analysis-only — no broker connected for these. Trading works on crypto (MEXC) & Polymarket.';
+    return;
+  }
   const symbol = state.selected.symbol;
   const binanceSymbol = state.selected.binance;
   const side = activeCryptoSide;

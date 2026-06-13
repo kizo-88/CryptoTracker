@@ -21,7 +21,14 @@
     <!-- LEFT: market scanner -->
     <section id="scanner" class="panel">
       <div class="panel-title"><img class="icon" src="asset/statistics.png" alt="" />MARKET SCANNER <span id="scan-count"></span></div>
-      <input id="search" type="text" placeholder="search coin…" autocomplete="off" />
+      <div class="scanner-cats" id="scanner-cats">
+        <button data-cat="crypto" class="active">CRYPTO</button>
+        <button data-cat="forex">FOREX</button>
+        <button data-cat="indices">INDICES</button>
+        <button data-cat="klci">KLCI</button>
+        <button data-cat="ipo">IPO</button>
+      </div>
+      <input id="search" type="text" placeholder="search…" autocomplete="off" />
       <div class="scanner-head">
         <span>ASSET</span><span>PRICE</span><span>24H</span><span>SIG</span>
       </div>

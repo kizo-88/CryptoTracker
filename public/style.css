@@ -98,6 +98,26 @@ body {
   outline: none;
 }
 #search:focus { border-color: var(--blue); }
+.scanner-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.scanner-cats button {
+  flex: 1 1 auto;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.scanner-cats button:hover { color: var(--text); border-color: var(--blue); }
+.scanner-cats button.active { background: var(--blue); color: #fff; border-color: var(--blue); }
 .scanner-head, .coin-row {
   display: grid;
   grid-template-columns: 1fr 78px 56px 44px;
@@ -131,7 +151,9 @@ body {
 .badge.NEUTRAL { background: rgba(92,108,138,.15); color: var(--dim); }
 
 /* ---------- chart area ---------- */
-#main { gap: 8px; }
+/* The centre column stacks chart + signal + trading hub. It scrolls as a
+   whole if the viewport is short, so cards never overlap or clip. */
+#main { gap: 8px; overflow-y: auto; overflow-x: hidden; }
 .chart-header { display: flex; align-items: center; gap: 16px; flex: 0 0 auto; }
 .coin-title { font-size: 16px; font-weight: bold; color: #fff; }
 .tf-buttons button {
@@ -147,10 +169,10 @@ body {
 .tf-buttons button:last-child { border-radius: 0 4px 4px 0; }
 .tf-buttons button.active { background: var(--blue); color: #fff; border-color: var(--blue); }
 .chart-source { color: var(--dim); font-size: 10px; margin-left: auto; }
-#chart { flex: 1; min-height: 240px; }
+#chart { flex: 1 1 auto; min-height: 200px; }
 
 /* ---------- signal card ---------- */
-.signal-card { flex: 0 0 auto; border-top: 1px solid var(--border); padding-top: 8px; }
+.signal-card { flex: 0 0 auto; border-top: 1px solid var(--border); padding-top: 8px; overflow-x: auto; }
 .sig-grid { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; }
 .sig-dir {
   font-size: 20px;
@@ -289,13 +311,14 @@ body {
 #chart-area {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 auto;
+  min-height: 260px;
 }
 #trading-hub {
   display: flex;
   flex-direction: column;
-  flex: 0 0 315px;
+  flex: 0 0 auto;
+  max-height: 340px;
   border-top: 1px solid var(--border);
   margin-top: 8px;
   padding-top: 8px;
@@ -378,7 +401,7 @@ body {
 
 .positions-split {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 12px;
   flex: 1;
   min-height: 0;
@@ -446,7 +469,7 @@ body {
 /* Pane 2: Manual Order Form */
 .order-forms {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
   flex: 1;
 }
@@ -571,7 +594,7 @@ body {
 /* Pane 3: Autotrade settings */
 .autotrade-grids {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
   margin-bottom: 8px;
 }

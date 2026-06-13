@@ -1,5 +1,6 @@
 const express = require('express');
 const market = require('../services/market');
+const tradfi = require('../services/tradfi');
 const polymarket = require('../services/polymarket');
 const mexc = require('../services/mexc');
 const { buildSignal } = require('../services/signals');
@@ -19,23 +20,43 @@ function handle(fn) {
   };
 }
 
-// Top-100 market scan with quick momentum signals
-router.get('/scan', handle(() => market.getScan()));
+// Market scan. ?category=crypto (default) | forex | indices | klci | ipo
+// Crypto comes from CoinGecko; the rest from Yahoo Finance (tradfi service).
+router.get(
+  '/scan',
+  handle((req) => {
+    const category = (req.query.category || 'crypto').toLowerCase();
+    if (category === 'crypto') return market.getScan();
+    return tradfi.getCategoryScan(category);
+  })
+);
 
 // Global market stats (total mcap, BTC dominance, ...)
 router.get('/global', handle(() => market.getGlobal()));
 
-// Full analysis for one coin: candles + indicators + signal with entry/TP/SL
+// Full analysis for one instrument: candles + indicators + signal w/ entry/TP/SL.
+// Crypto: ?binance=BTCUSDT&id=bitcoin. TradFi: ?source=yahoo&symbol=EURUSD=X
 router.get(
   '/signal',
   handle(async (req) => {
-    const binanceSymbol = (req.query.binance || 'BTCUSDT').toUpperCase();
-    const coinId = req.query.id || null;
     const interval = ['5m', '1h', '4h', '1d'].includes(req.query.interval) ? req.query.interval : '4h';
-    const { source, candles } = await market.getKlines({ binanceSymbol, coinId, interval });
-    if (!candles || candles.length < 30) throw new Error(`not enough candle data for ${binanceSymbol}`);
+    let label, source, candles;
+
+    if ((req.query.source || '').toLowerCase() === 'yahoo') {
+      const ySymbol = req.query.symbol;
+      if (!ySymbol) throw new Error('symbol is required for yahoo source');
+      ({ source, candles } = await tradfi.getYahooKlines(ySymbol, interval));
+      label = ySymbol;
+    } else {
+      const binanceSymbol = (req.query.binance || 'BTCUSDT').toUpperCase();
+      const coinId = req.query.id || null;
+      ({ source, candles } = await market.getKlines({ binanceSymbol, coinId, interval }));
+      label = binanceSymbol;
+    }
+
+    if (!candles || candles.length < 30) throw new Error(`not enough candle data for ${label}`);
     const signal = buildSignal(candles);
-    return { symbol: binanceSymbol, coinId, interval, source, candles, signal };
+    return { symbol: label, interval, source, candles, signal };
   })
 );
 
