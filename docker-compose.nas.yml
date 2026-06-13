@@ -8,11 +8,11 @@
 # to main. Make the GHCR package public (GitHub → Packages → cryptotracker →
 # Package settings → Change visibility) so the NAS can pull without login.
 services:
-  # Container name + port match the Cloudflare Tunnel route already configured
-  # on the umpsah-nas tunnel: api.umpsahllm.com → http://umpsah-backend:3001
-  umpsah-backend:
+  # Container name + port match the Cloudflare Tunnel route configured
+  # on the tunnel: crypto.umpsahllm.com → http://cryptotracker:3001
+  cryptotracker:
     image: ghcr.io/kizo-88/cryptotracker:latest
-    container_name: umpsah-backend
+    container_name: cryptotracker
     restart: unless-stopped
     pull_policy: always
     ports:
@@ -34,4 +34,4 @@ services:
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
     depends_on:
-      - umpsah-backend
+      - cryptotracker
