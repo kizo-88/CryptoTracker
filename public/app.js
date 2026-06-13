@@ -16,17 +16,10 @@ const state = {
 };
 
 // Returns the backend host URL the dashboard should call.
-// Priority: explicit setting (CONNECT modal) > sensible default for the
-// deployment. When served from Cloudflare Pages (a non-local host) with no
-// backend configured, default to a local Node backend on the same machine;
-// when served locally, use the same origin (relative URLs).
+// Priority: explicit setting (CONNECT modal) > relative paths.
 function getApiHost() {
   const saved = localStorage.getItem('apiHost');
   if (saved != null && saved !== '') return saved;
-  const host = location.hostname;
-  if (host && host !== 'localhost' && host !== '127.0.0.1' && host !== '') {
-    return 'http://localhost:3000';
-  }
   return '';
 }
 
