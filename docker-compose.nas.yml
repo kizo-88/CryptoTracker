@@ -1,0 +1,35 @@
+# NAS-ready compose — pulls the prebuilt image from GHCR (no source / no local
+# build needed). Use this one in Synology Container Manager.
+#
+#   docker compose -f docker-compose.nas.yml up -d                       # backend only
+#   TUNNEL_TOKEN=xxx docker compose -f docker-compose.nas.yml --profile tunnel up -d
+#
+# The image is published by .github/workflows/docker-publish.yml on every push
+# to main. Make the GHCR package public (GitHub → Packages → cryptotracker →
+# Package settings → Change visibility) so the NAS can pull without login.
+services:
+  cryptotracker:
+    image: ghcr.io/kizo-88/cryptotracker:latest
+    container_name: cryptotracker
+    restart: unless-stopped
+    pull_policy: always
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      # Optional: auto-connect MEXC with a READ-ONLY (or no-withdraw) key
+      # - MEXC_API_KEY=your_key
+      # - MEXC_API_SECRET=your_secret
+    volumes:
+      - ./data:/app/data
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cryptotracker-tunnel
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - cryptotracker

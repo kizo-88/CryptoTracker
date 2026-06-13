@@ -109,12 +109,20 @@ into the dashboard's **CONNECT → Terminal Backend API** field.
 Runs the backend 24/7 on hardware you own, exposed through your Cloudflare
 domain with **no open ports** (a `cloudflared` tunnel dials out).
 
+The image is built automatically by GitHub Actions
+(`.github/workflows/docker-publish.yml`) and published to
+`ghcr.io/kizo-88/cryptotracker:latest`, so the NAS only **pulls** it — no
+source files or local Docker build needed. Make the GHCR package **public**
+once (GitHub → your profile → Packages → cryptotracker → Package settings →
+Change visibility → Public) so the NAS can pull without logging in.
+
 **On the NAS (DSM):**
 1. Install **Container Manager** (DSM Package Center).
-2. Copy this repo to a shared folder, e.g. `/volume1/docker/cryptotracker`.
-3. Container Manager → **Project** → Create → point at that folder
-   (it uses `docker-compose.yml`). Build & run. The backend is now on
-   `http://<nas-ip>:3000` (works on your LAN immediately).
+2. Create a folder e.g. `/volume1/docker/cryptotracker` and drop
+   `docker-compose.nas.yml` in it (rename to `docker-compose.yml`).
+3. Container Manager → **Project** → Create → point at that folder → run.
+   It pulls the image and starts. Backend is now on `http://<nas-ip>:3000`
+   (works on your LAN immediately).
 
 **Expose it via Cloudflare Tunnel (uses your Cloudflare account):**
 4. Cloudflare **Zero Trust** dashboard → Networks → **Tunnels** → Create a
