@@ -19,6 +19,10 @@ function isConnected() {
   return Boolean(creds.key && creds.secret);
 }
 
+function getCreds() {
+  return { key: creds.key, secret: creds.secret };
+}
+
 function disconnect() {
   creds = { key: null, secret: null };
 }
@@ -71,4 +75,4 @@ async function placeMarketOrder({ symbol, side, usdtAmount, quantity }) {
   return signedRequest('POST', '/api/v3/order', params);
 }
 
-module.exports = { setCreds, isConnected, disconnect, getAccount, placeMarketOrder };
+module.exports = { setCreds, getCreds, isConnected, disconnect, getAccount, placeMarketOrder };

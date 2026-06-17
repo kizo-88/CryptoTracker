@@ -18,6 +18,9 @@ const DEFAULTS = {
     maxPositions: 5,
     universe: 20,         // how many top coins to scan
     candleInterval: '1h',
+    leverage: 3,          // futures leverage for sizing / live MEXC contract orders
+    beEnabled: true,      // auto-move SL to break-even once a trade is in profit
+    beTrigger: 0.4,       // favorable move (% of entry) that triggers the BE shift
   },
   polymarketPaper: { balance: 10000, startBalance: 10000 },
   polymarketPositions: [], // open Polymarket positions

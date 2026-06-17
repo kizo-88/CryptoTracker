@@ -3,6 +3,7 @@ const market = require('../services/market');
 const tradfi = require('../services/tradfi');
 const polymarket = require('../services/polymarket');
 const mexc = require('../services/mexc');
+const mexcFutures = require('../services/mexcFutures');
 const { buildSignal } = require('../services/signals');
 const trading = require('../services/trading');
 const autotrader = require('../services/autotrader');
@@ -115,6 +116,10 @@ router.get(
     return { ...account, totalUsd: +totalUsd.toFixed(2) };
   })
 );
+
+// USDⓈ-M futures wallet (contract account balances). Best-effort: MEXC may
+// restrict the contract account API on some retail keys.
+router.get('/mexc/futures', handle(async () => mexcFutures.getWallet()));
 
 // --- Unified Trading & Portfolio ---
 router.get(

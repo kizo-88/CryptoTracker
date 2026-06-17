@@ -33,8 +33,10 @@ async function tickCrypto() {
     const priceMap = new Map(scan.map((c) => [c.symbol, c.price]));
     const priceOf = (pos) => priceMap.get(pos.symbol) || null;
 
-    // 1) manage exits on ALL open crypto positions (manual + auto)
-    for (const closed of await trading.manage(priceOf)) {
+    // 1) manage exits + break-even moves on ALL open crypto positions (manual + auto)
+    const { closes, events } = await trading.manage(priceOf);
+    for (const ev of events) log(ev.msg, ev.level);
+    for (const closed of closes) {
       if (closed.error) log(`failed to close crypto ${closed.symbol}: ${closed.error}`, 'error');
       else log(`closed crypto ${closed.symbol} ${closed.side} @ ${closed.exit} (${closed.reason}) PnL $${closed.pnl}`, closed.pnl >= 0 ? 'win' : 'loss');
     }
@@ -63,7 +65,7 @@ async function tickCrypto() {
       } catch { continue; }
 
       if (sig.direction === 'NEUTRAL' || sig.confidence < cfg.minConfidence) continue;
-      if (cfg.mode === 'live' && sig.direction === 'SHORT') continue; // spot = long only
+      // futures allows shorts in both paper and live, so no long-only filter
 
       try {
         const pos = await trading.open({
@@ -75,9 +77,10 @@ async function tickCrypto() {
           sl: sig.stopLoss,
           tp: sig.takeProfits[0]?.price ?? null,
           mode: cfg.mode,
+          leverage: cfg.leverage,
           source: 'auto',
         });
-        log(`opened auto crypto ${pos.mode} ${pos.side} ${pos.symbol} $${cfg.usdtPerTrade} @ ${pos.entry} (conf ${sig.confidence}%) SL ${pos.sl} TP ${pos.tp}`);
+        log(`opened auto futures ${pos.mode} ${pos.side} ${pos.symbol} ${pos.leverage}x $${cfg.usdtPerTrade} @ ${pos.entry} (conf ${sig.confidence}%) SL ${pos.sl} TP ${pos.tp}`);
       } catch (err) {
         log(`could not open crypto ${c.symbol}: ${err.message}`, 'error');
       }
@@ -197,7 +200,7 @@ function applyPolymarketTimer() {
 
 function configure(patch) {
   const s = store.load();
-  const allowed = ['enabled', 'mode', 'intervalMin', 'minConfidence', 'usdtPerTrade', 'maxPositions', 'universe', 'candleInterval'];
+  const allowed = ['enabled', 'mode', 'intervalMin', 'minConfidence', 'usdtPerTrade', 'maxPositions', 'universe', 'candleInterval', 'leverage', 'beEnabled', 'beTrigger'];
   for (const k of allowed) if (k in patch) s.autotrade[k] = patch[k];
   s.autotrade.mode = s.autotrade.mode === 'live' ? 'live' : 'paper';
   s.autotrade.enabled = Boolean(s.autotrade.enabled);

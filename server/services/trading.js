@@ -4,6 +4,7 @@
 const crypto = require('crypto');
 const store = require('./store');
 const mexc = require('./mexc');
+const mexcFutures = require('./mexcFutures');
 
 const STABLES = new Set(['USDT', 'USDC', 'DAI', 'FDUSD', 'USDS', 'USDE', 'TUSD', 'PYUSD', 'USD1']);
 
@@ -12,29 +13,31 @@ function uid() {
 }
 
 /**
- * Open a position. Paper mode supports LONG and SHORT; live mode is spot,
- * so LONG only (buy now, sell at SL/TP).
+ * Open a USDⓈ-M perpetual FUTURES position (long or short, leveraged).
+ * `usdt` is the isolated margin; the position notional is margin × leverage.
+ * Paper mode simulates the fill; live mode routes to the MEXC contract API.
  */
-async function open({ symbol, binanceSymbol, side, usdt, price, sl, tp, mode, source = 'manual' }) {
+async function open({ symbol, binanceSymbol, side, usdt, price, sl, tp, mode, leverage, source = 'manual' }) {
   const s = store.load();
   usdt = +usdt;
   price = +price;
-  if (!usdt || usdt <= 0) throw new Error('trade amount (USDT) must be > 0');
+  leverage = Math.max(1, Math.min(50, +leverage || 1));
+  if (!usdt || usdt <= 0) throw new Error('trade margin (USDT) must be > 0');
   if (!price || price <= 0) throw new Error('no price for trade');
   if (!['LONG', 'SHORT'].includes(side)) throw new Error('side must be LONG or SHORT');
   if (STABLES.has(symbol)) throw new Error(`${symbol} is a stablecoin — nothing to trade`);
-  if (mode === 'live' && side === 'SHORT') throw new Error('live trading is spot — LONG only (use paper mode to simulate shorts)');
 
   let fill = price;
-  let qty = usdt / price;
+  let qty = (usdt * leverage) / price; // futures: notional = margin × leverage
 
   if (mode === 'live') {
-    const order = await mexc.placeMarketOrder({ symbol: binanceSymbol, side: 'BUY', usdtAmount: usdt });
-    qty = +order.executedQty || qty;
-    if (+order.cummulativeQuoteQty && +order.executedQty) fill = +order.cummulativeQuoteQty / +order.executedQty;
+    // long OR short on USDⓈ-M futures via the MEXC contract API
+    const order = await mexcFutures.open({ binanceSymbol, side, marginUsdt: usdt, leverage, price });
+    qty = order.qty || qty;
+    fill = order.fill || fill;
   } else {
-    if (s.paper.balance < usdt) throw new Error(`paper balance $${s.paper.balance.toFixed(2)} is less than trade size`);
-    s.paper.balance -= usdt;
+    if (s.paper.balance < usdt) throw new Error(`paper balance $${s.paper.balance.toFixed(2)} is less than the margin`);
+    s.paper.balance -= usdt; // reserve isolated margin
   }
 
   const pos = {
@@ -46,9 +49,11 @@ async function open({ symbol, binanceSymbol, side, usdt, price, sl, tp, mode, so
     side,
     qty,
     entry: fill,
-    usdt,
+    usdt,            // isolated margin
+    leverage,
     sl: sl != null ? +sl : null,
     tp: tp != null ? +tp : null,
+    beMoved: false,  // has the SL been pulled to break-even yet?
     openedAt: new Date().toISOString(),
   };
   s.positions.push(pos);
@@ -65,16 +70,18 @@ async function close(id, price, reason = 'manual') {
   price = +price || pos.entry;
 
   if (pos.mode === 'live') {
-    await mexc.placeMarketOrder({ symbol: pos.binanceSymbol, side: 'SELL', quantity: pos.qty });
+    await mexcFutures.close({ binanceSymbol: pos.binanceSymbol, side: pos.side, qty: pos.qty });
   }
 
   const gross = pos.side === 'LONG'
     ? (price - pos.entry) * pos.qty
     : (pos.entry - price) * pos.qty;
-  const pnl = +gross.toFixed(2);
+  const margin = pos.usdt;
+  const realized = Math.max(gross, -margin); // isolated futures: max loss = the margin
+  const pnl = +realized.toFixed(2);
 
   if (pos.mode === 'paper') {
-    s.paper.balance += pos.usdt + gross;
+    s.paper.balance += margin + realized;
   }
 
   s.positions.splice(idx, 1);
@@ -82,7 +89,7 @@ async function close(id, price, reason = 'manual') {
     ...pos,
     exit: price,
     pnl,
-    pnlPct: +((gross / pos.usdt) * 100).toFixed(2),
+    pnlPct: +((realized / margin) * 100).toFixed(2),
     reason,
     closedAt: new Date().toISOString(),
   };
@@ -93,30 +100,53 @@ async function close(id, price, reason = 'manual') {
 }
 
 /**
- * Mark all open positions against current prices; auto-close any that hit
- * SL/TP. Returns the closes performed.
- */
-/**
- * Mark all open positions against current prices; auto-close any that hit
- * SL/TP. Returns the closes performed.
+ * Mark all open positions against current prices. For each: (0) liquidate if
+ * an isolated loss reaches the margin, (1) pull the SL to break-even once in
+ * profit past the trigger (so a winner can't turn into a loser), then (2)
+ * auto-close on SL/TP. Returns { closes, events } — events are non-close
+ * notices (e.g. break-even moves) for the activity log.
  */
 async function manage(priceOf) {
   const s = store.load();
+  const cfg = s.autotrade || {};
   const closes = [];
+  const events = [];
   for (const pos of [...s.positions]) {
     const price = priceOf(pos);
     if (!price) continue;
+    const margin = pos.usdt;
+    const gross = pos.side === 'LONG' ? (price - pos.entry) * pos.qty : (pos.entry - price) * pos.qty;
+
+    // 0) liquidation — isolated loss has eaten (almost) the whole margin
+    if (margin > 0 && gross <= -margin * 0.995) {
+      try { closes.push(await close(pos.id, price, 'liquidation')); }
+      catch (err) { closes.push({ ...pos, error: err.message }); }
+      continue;
+    }
+
+    // 1) break-even: once favorably in profit past the trigger (and before TP),
+    //    move the stop to entry so the trade can only close at >= break-even.
+    if (cfg.beEnabled && !pos.beMoved) {
+      const favPct = (pos.side === 'LONG' ? (price - pos.entry) / pos.entry : (pos.entry - price) / pos.entry) * 100;
+      const beforeTP = pos.tp == null || (pos.side === 'LONG' ? price < pos.tp : price > pos.tp);
+      if (favPct >= (cfg.beTrigger ?? 0.4) && beforeTP) {
+        pos.sl = pos.entry;
+        pos.beMoved = true;
+        store.save();
+        events.push({ level: 'info', msg: `SL→break-even on ${pos.symbol} ${pos.side} @ ${pos.entry} (+${favPct.toFixed(2)}% locked, can't lose now)` });
+      }
+    }
+
+    // 2) SL / TP exits
     const hitSL = pos.sl != null && (pos.side === 'LONG' ? price <= pos.sl : price >= pos.sl);
     const hitTP = pos.tp != null && (pos.side === 'LONG' ? price >= pos.tp : price <= pos.tp);
     if (hitSL || hitTP) {
-      try {
-        closes.push(await close(pos.id, price, hitSL ? 'stop-loss' : 'take-profit'));
-      } catch (err) {
-        closes.push({ ...pos, error: err.message });
-      }
+      const reason = hitTP ? 'take-profit' : (pos.beMoved && pos.sl === pos.entry ? 'break-even' : 'stop-loss');
+      try { closes.push(await close(pos.id, price, reason)); }
+      catch (err) { closes.push({ ...pos, error: err.message }); }
     }
   }
-  return closes;
+  return { closes, events };
 }
 
 /** Open a Polymarket contract position. */

@@ -19,8 +19,54 @@ const state = {
 // Priority: explicit setting (CONNECT modal) > relative paths.
 function getApiHost() {
   const saved = localStorage.getItem('apiHost');
-  if (saved != null && saved !== '') return saved;
+  if (saved != null && saved !== '') return upgradeHttp(saved);
   return '';
+}
+
+// When the dashboard is served over HTTPS (Cloudflare Pages), the browser blocks
+// any plain http:// backend call as "mixed content". A Cloudflare-tunnel hostname
+// is reachable over https anyway, so transparently upgrade a remote http:// backend
+// URL to https://. localhost is left as-is (it stays http and is exempt).
+function upgradeHttp(url) {
+  if (location.protocol === 'https:' &&
+      /^http:\/\//i.test(url) &&
+      !/^https?:\/\/(localhost|127\.0\.0\.1)\b/i.test(url)) {
+    return url.replace(/^http:\/\//i, 'https://');
+  }
+  return url;
+}
+
+/* ---------------- backend fetch helper ---------------- */
+// Fetch JSON from the backend with a timeout, failing *cleanly* when the backend
+// is unreachable. A down tunnel returns Cloudflare's HTML 502 page, which would
+// otherwise throw "Unexpected token '<'" as JSON on every poll.
+let backendDown = false, lastBackendWarn = 0;
+async function apiJson(path, opts = {}) {
+  const { timeout = 12000, ...init } = opts;
+  let res;
+  try {
+    res = await fetch(getApiHost() + path, { signal: AbortSignal.timeout(timeout), ...init });
+  } catch (e) {
+    throw new Error(e.name === 'TimeoutError' ? 'backend timed out' : 'backend unreachable');
+  }
+  if (!res.ok) throw new Error(`backend HTTP ${res.status}`);
+  const text = await res.text();
+  try { return JSON.parse(text); }
+  catch { throw new Error('backend returned a non-JSON response (unreachable?)'); }
+}
+// Surface one banner + one console line when the backend goes down, instead of
+// spamming an error on every 5-second poll. Cleared on the next success.
+function markBackendDown(where, err) {
+  backendDown = true;
+  const b = $('#backend-banner');
+  if (b) { b.textContent = `⚠ Backend offline (${getApiHost() || 'same origin'}) — ${err.message}. Check CONNECT → Terminal Backend API.`; b.classList.remove('hidden'); }
+  const now = Date.now();
+  if (now - lastBackendWarn > 30000) { lastBackendWarn = now; console.warn(`Backend offline — ${where}: ${err.message}`); } // throttle, don't spam each poll
+}
+function markBackendUp() {
+  const b = $('#backend-banner');
+  if (b) b.classList.add('hidden');
+  if (backendDown) { backendDown = false; lastBackendWarn = 0; console.info('Backend back online'); }
 }
 
 /* ---------------- formatting helpers ---------------- */
@@ -53,10 +99,11 @@ function rowPrice(c) {
     : v.toFixed(5);
   return c.source === 'yahoo' ? num : '$' + fmtPrice(v);
 }
-// Quote-pair suffix shown beside the chart title.
+// Quote-pair suffix shown beside the chart title. Crypto is the USDⓈ-M
+// perpetual we actually trade, so flag it as PERP.
 function quoteSuffix(sel) {
   if (sel.source === 'yahoo') return '';
-  return ' / USDT';
+  return ' / USDT PERP';
 }
 
 /* ---------------- clock ---------------- */
@@ -67,7 +114,8 @@ setInterval(() => {
 /* ---------------- global stats ---------------- */
 async function loadGlobal() {
   try {
-    const g = await (await fetch(getApiHost() + '/api/global')).json();
+    const g = await apiJson('/api/global');
+    markBackendUp();
     const chg = g.marketCapChange24h;
     $('#global-stats').innerHTML = `
       <span>MCAP <b>$${fmtBig(g.totalMarketCap)}</b> <span class="${chg >= 0 ? 'up' : 'down'}">${chg >= 0 ? '▲' : '▼'}${Math.abs(chg).toFixed(2)}%</span></span>
@@ -81,7 +129,8 @@ async function loadGlobal() {
 async function loadScan(autoSelectFirst = false) {
   if (state.category === 'polymarket') { await loadPolymarket(autoSelectFirst); return; }
   try {
-    const coins = await (await fetch(getApiHost() + `/api/scan?category=${state.category}`)).json();
+    const coins = await apiJson(`/api/scan?category=${state.category}`);
+    markBackendUp();
     if (Array.isArray(coins)) {
       state.coins = coins;
       renderScanner();
@@ -105,7 +154,10 @@ function selectRow(c) {
 
 function renderScanner() {
   if (state.category === 'polymarket') return renderPolymarketScanner();
-  if ($('.scanner-head')) $('.scanner-head').innerHTML = '<span>ASSET</span><span>PRICE</span><span>24H</span><span>SIG</span>';
+  // crypto trades as USDⓈ-M perps — flag the price column so it's clear the
+  // scanner is showing futures, not spot. TradFi keeps the plain PRICE header.
+  const priceHdr = state.category === 'crypto' ? 'PERP $' : 'PRICE';
+  if ($('.scanner-head')) $('.scanner-head').innerHTML = `<span>ASSET</span><span>${priceHdr}</span><span>24H</span><span>SIG</span>`;
   const q = $('#search').value.trim().toLowerCase();
   const list = state.coins.filter(
     (c) => !q || c.symbol.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
@@ -322,11 +374,11 @@ async function loadSignal() {
   $('#signal-card').innerHTML = '<div class="loading">analysing…</div>';
   $('#analysis').innerHTML = '<div class="loading">computing indicators…</div>';
   try {
-    const url = sel.source === 'yahoo'
-      ? getApiHost() + `/api/signal?source=yahoo&symbol=${encodeURIComponent(sel.yahoo)}&interval=${state.interval}`
-      : getApiHost() + `/api/signal?binance=${sel.binance}&id=${sel.id}&interval=${state.interval}`;
-    const res = await fetch(url);
-    const data = await res.json();
+    const path = sel.source === 'yahoo'
+      ? `/api/signal?source=yahoo&symbol=${encodeURIComponent(sel.yahoo)}&interval=${state.interval}`
+      : `/api/signal?binance=${sel.binance}&id=${sel.id}&interval=${state.interval}`;
+    const data = await apiJson(path);
+    markBackendUp();
     if (reqId !== signalReq) return;
     if (data.error) throw new Error(data.error);
 
@@ -803,6 +855,7 @@ if (activeHost) {
 $('#api-host-save').addEventListener('click', async () => {
   let host = $('#api-host-url').value.trim();
   if (host) host = host.replace(/\/+$/, ''); // strip trailing slash
+  if (host) { host = upgradeHttp(host); $('#api-host-url').value = host; } // avoid http→mixed-content on an https page
 
   const resultEl = $('#api-host-result');
   resultEl.className = 'acct-result';
@@ -837,6 +890,36 @@ $('#api-host-save').addEventListener('click', async () => {
   }
 });
 
+// Fetch and render the USDⓈ-M FUTURES wallet (contract account). Drives the
+// "MEXC FUTURES" balance card and the wallet breakdown in the CONNECT modal.
+// MEXC sometimes blocks the contract account API on retail keys, so failures
+// degrade gracefully to an explanatory note.
+async function loadMexcFutures() {
+  const card = $('#bal-mexc-live');
+  const box = $('#mexc-futures-result');
+  try {
+    const data = await (await fetch(getApiHost() + '/api/mexc/futures')).json();
+    if (data.error) throw new Error(data.error);
+    const total = data.totalUsd ?? 0;
+    if (card) card.textContent = `$${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+    if (box) {
+      if (!data.assets || !data.assets.length) {
+        box.innerHTML = '<div class="total-line">FUTURES WALLET</div><div class="hint">no funded futures assets — wallet is empty</div>';
+      } else {
+        const rows = data.assets.map((a) => `
+          <tr><td>${a.currency}</td><td>${a.equity}</td><td>${a.available}</td>
+          <td class="${a.unrealized >= 0 ? 'up' : 'down'}">${a.unrealized >= 0 ? '+' : ''}${a.unrealized}</td></tr>`).join('');
+        box.innerHTML = `
+          <div class="total-line">FUTURES WALLET EQUITY $${total.toLocaleString()}</div>
+          <table class="bal-table"><tr><th>COIN</th><th>EQUITY</th><th>AVAIL</th><th>uPNL</th></tr>${rows}</table>`;
+      }
+    }
+  } catch (err) {
+    if (card) card.textContent = 'N/A';
+    if (box) box.innerHTML = `<div class="hint">⚠ futures wallet unavailable — ${err.message}</div>`;
+  }
+}
+
 function renderMexcAccount(acct) {
   connections.mexc = true;
   $('#mexc-dot').className = 'dot on';
@@ -855,7 +938,8 @@ function renderMexcAccount(acct) {
     ${acct.balances.length > 12 ? `<div class="hint">+${acct.balances.length - 12} more assets</div>` : ''}
     <div class="acct-row"><button id="mexc-disconnect" class="btn-go" style="background:var(--red)">DISCONNECT</button></div>`;
   
-  $('#bal-mexc-live').textContent = acct.totalUsd != null ? `$${acct.totalUsd.toLocaleString()}` : 'CONNECTED';
+  // the headline card now shows the FUTURES wallet (what live trades draw on)
+  loadMexcFutures();
 
   $('#mexc-disconnect').addEventListener('click', async () => {
     await fetch(getApiHost() + '/api/disconnect/mexc', { method: 'POST' });
@@ -863,6 +947,7 @@ function renderMexcAccount(acct) {
     $('#mexc-dot').className = 'dot off';
     $('#mexc-form').style.display = '';
     $('#mexc-result').innerHTML = '';
+    $('#mexc-futures-result').innerHTML = '';
     $('#bal-mexc-live').textContent = 'DISCONNECTED';
     updateConnCount();
   });
@@ -1027,7 +1112,8 @@ async function closePosition(market, id, price) {
 
 async function loadPortfolio() {
   try {
-    const snap = await (await fetch(getApiHost() + '/api/portfolio')).json();
+    const snap = await apiJson('/api/portfolio');
+    markBackendUp();
     if (snap.error) return;
 
     $('#bal-crypto-paper').textContent = `$${snap.paperBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
@@ -1110,7 +1196,7 @@ async function loadPortfolio() {
         </table>`;
     }
   } catch (err) {
-    console.error('Error loading portfolio:', err.message);
+    markBackendDown('portfolio', err);
   }
 }
 
@@ -1143,6 +1229,7 @@ $('#btn-submit-crypto').addEventListener('click', async () => {
   const binanceSymbol = state.selected.binance;
   const side = activeCryptoSide;
   const usdt = $('#crypto-amount').value;
+  const leverage = $('#crypto-leverage').value;
   const price = state.selectedSignal?.entry || (state.coins.find(c => c.symbol === symbol)?.price);
   const sl = $('#crypto-sl').value;
   const tp = $('#crypto-tp').value;
@@ -1162,6 +1249,7 @@ $('#btn-submit-crypto').addEventListener('click', async () => {
         binanceSymbol,
         side,
         usdt,
+        leverage,
         price,
         sl: sl ? sl : null,
         tp: tp ? tp : null,
@@ -1228,25 +1316,38 @@ $('#btn-submit-poly').addEventListener('click', async () => {
   }
 });
 
+// ON/OFF master switch styling for an auto-trade bot. The button's `on` class
+// is the source of truth for the bot's enabled state in the UI.
+function setAutoToggle(btn, on) {
+  if (!btn) return;
+  btn.classList.toggle('on', on);
+  btn.classList.toggle('off', !on);
+  btn.textContent = on ? '■ STOP AUTO-TRADE' : '▶ START AUTO-TRADE';
+}
+function isAutoOn(btn) { return !!btn && btn.classList.contains('on'); }
+
 async function loadAutotradeStatus() {
   try {
-    const res = await fetch(getApiHost() + '/api/autotrade/status');
-    const data = await res.json();
+    const data = await apiJson('/api/autotrade/status');
+    markBackendUp();
     if (data.error) return;
 
     // Crypto Bot
     const c = data.crypto;
-    $('#crypto-auto-enabled').checked = c.enabled;
+    setAutoToggle($('#btn-toggle-crypto-auto'), c.enabled);
     $('#crypto-auto-mode').value = c.mode;
     $('#crypto-auto-confidence').value = c.minConfidence;
     $('#crypto-auto-size').value = c.usdtPerTrade;
     $('#crypto-auto-interval').value = c.intervalMin;
     $('#crypto-auto-max').value = c.maxPositions;
+    $('#crypto-auto-leverage').value = c.leverage ?? 3;
+    $('#crypto-auto-be-trigger').value = c.beTrigger ?? 0.4;
+    $('#crypto-auto-be').checked = c.beEnabled !== false;
     $('#crypto-auto-dot').className = c.enabled ? 'dot on' : 'dot off';
 
     // Polymarket Bot
     const pm = data.polymarket;
-    $('#poly-auto-enabled').checked = pm.enabled;
+    setAutoToggle($('#btn-toggle-poly-auto'), pm.enabled);
     $('#poly-auto-mode').value = pm.mode;
     $('#poly-auto-edge').value = pm.minEdge * 100;
     $('#poly-auto-size').value = pm.usdcPerTrade;
@@ -1263,55 +1364,70 @@ async function loadAutotradeStatus() {
       $('#autotrade-logs').innerHTML = logsHtml || '<div class="hint">No bot activities logged yet.</div>';
     }
   } catch (err) {
-    console.error('Error loading autotrader status:', err.message);
+    markBackendDown('autotrader', err);
   }
 }
 
-$('#btn-save-crypto-auto').addEventListener('click', async () => {
-  const enabled = $('#crypto-auto-enabled').checked;
+// Push the crypto bot config with an explicit enabled flag. Used by both the
+// SAVE button (keeps current on/off) and the START/STOP toggle (flips it).
+async function applyCryptoAuto(enabled) {
   const mode = $('#crypto-auto-mode').value;
-  const minConfidence = $('#crypto-auto-confidence').value;
-  const usdtPerTrade = $('#crypto-auto-size').value;
-  const intervalMin = $('#crypto-auto-interval').value;
-  const maxPositions = $('#crypto-auto-max').value;
-
+  // guard: don't silently fire real MEXC futures orders
+  if (enabled && mode === 'live' &&
+      !confirm('Start LIVE auto-trading on MEXC FUTURES? Real leveraged orders will be placed automatically.')) {
+    return;
+  }
+  const config = {
+    enabled,
+    mode,
+    minConfidence: $('#crypto-auto-confidence').value,
+    usdtPerTrade: $('#crypto-auto-size').value,
+    intervalMin: $('#crypto-auto-interval').value,
+    maxPositions: $('#crypto-auto-max').value,
+    leverage: $('#crypto-auto-leverage').value,
+    beTrigger: $('#crypto-auto-be-trigger').value,
+    beEnabled: $('#crypto-auto-be').checked,
+  };
+  setAutoToggle($('#btn-toggle-crypto-auto'), enabled); // optimistic
   try {
     await fetch(getApiHost() + '/api/autotrade/configure', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        market: 'crypto',
-        config: { enabled, mode, minConfidence, usdtPerTrade, intervalMin, maxPositions }
-      }),
+      body: JSON.stringify({ market: 'crypto', config }),
     });
     loadAutotradeStatus();
   } catch (err) {
     alert(`Save crypto bot config failed: ${err.message}`);
+    loadAutotradeStatus(); // resync the toggle with the real state
   }
-});
+}
+$('#btn-save-crypto-auto').addEventListener('click', () => applyCryptoAuto(isAutoOn($('#btn-toggle-crypto-auto'))));
+$('#btn-toggle-crypto-auto').addEventListener('click', () => applyCryptoAuto(!isAutoOn($('#btn-toggle-crypto-auto'))));
 
-$('#btn-save-poly-auto').addEventListener('click', async () => {
-  const enabled = $('#poly-auto-enabled').checked;
-  const mode = $('#poly-auto-mode').value;
-  const minEdge = $('#poly-auto-edge').value / 100.0;
-  const usdcPerTrade = $('#poly-auto-size').value;
-  const intervalMin = $('#poly-auto-interval').value;
-  const maxPositions = $('#poly-auto-max').value;
-
+async function applyPolyAuto(enabled) {
+  const config = {
+    enabled,
+    mode: $('#poly-auto-mode').value,
+    minEdge: $('#poly-auto-edge').value / 100.0,
+    usdcPerTrade: $('#poly-auto-size').value,
+    intervalMin: $('#poly-auto-interval').value,
+    maxPositions: $('#poly-auto-max').value,
+  };
+  setAutoToggle($('#btn-toggle-poly-auto'), enabled); // optimistic
   try {
     await fetch(getApiHost() + '/api/autotrade/configure', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        market: 'polymarket',
-        config: { enabled, mode, minEdge, usdcPerTrade, intervalMin, maxPositions }
-      }),
+      body: JSON.stringify({ market: 'polymarket', config }),
     });
     loadAutotradeStatus();
   } catch (err) {
     alert(`Save poly bot config failed: ${err.message}`);
+    loadAutotradeStatus();
   }
-});
+}
+$('#btn-save-poly-auto').addEventListener('click', () => applyPolyAuto(isAutoOn($('#btn-toggle-poly-auto'))));
+$('#btn-toggle-poly-auto').addEventListener('click', () => applyPolyAuto(!isAutoOn($('#btn-toggle-poly-auto'))));
 
 /* ---------------- boot ---------------- */
 initChart();
@@ -1334,3 +1450,6 @@ setInterval(loadPolymarket, 120_000);
 // Polling for portfolio & autotrader
 setInterval(loadPortfolio, 5000);
 setInterval(loadAutotradeStatus, 10000);
+
+// refresh the live MEXC futures wallet on a slower cadence (rate-limit friendly)
+setInterval(() => { if (connections.mexc) loadMexcFutures(); }, 30000);

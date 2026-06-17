@@ -180,7 +180,7 @@ body {
 .ct-buttons button:disabled { opacity: .4; cursor: not-allowed; }
 
 /* chart + volume-profile / SMC-zone overlays */
-#chart-wrap { position: relative; flex: 1 1 auto; min-height: 160px; }
+#chart-wrap { position: relative; flex: 1 1 auto; min-height: 160px; overflow: hidden; }
 #chart { position: absolute; inset: 0; }
 #vp-overlay, #zone-overlay { position: absolute; inset: 0; pointer-events: none; }
 
@@ -203,6 +203,13 @@ body {
 
 #overlay-toggles { margin-left: 6px; }
 #overlay-toggles button.active { background: var(--panel2); color: var(--blue); border-color: var(--blue); }
+
+/* backend-offline banner */
+#backend-banner {
+  background: rgba(234,57,67,0.12); border: 1px solid rgba(234,57,67,0.5);
+  color: #ff8a93; font-size: 11px; padding: 5px 10px; border-radius: 4px;
+  margin: 0 0 6px; flex: 0 0 auto;
+}
 
 /* generic show/hide */
 .hidden { display: none !important; }
@@ -376,16 +383,16 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-@media (max-width: 1100px) {
-  #layout { grid-template-columns: 240px 1fr; }
-  #side { display: none; }
-}
+/* responsive rules are consolidated at the end of this file */
 
 /* ---------- trading hub ---------- */
 #chart-area {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  /* grow to fill a tall viewport, but NEVER shrink below the combined height of
+     the chart + oscillators + signal card — otherwise that content overflows
+     and paints on top of the trading hub below (the #main column scrolls). */
+  flex: 1 0 auto;
   min-height: 260px;
 }
 #trading-hub {
@@ -681,6 +688,24 @@ body {
   flex-direction: column;
   gap: 5px;
 }
+/* one-click auto-trade master switch */
+.btn-toggle-auto {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  padding: 10px;
+  border-radius: 4px;
+  border: 1px solid;
+  cursor: pointer;
+  margin-bottom: 2px;
+  transition: filter .12s ease;
+}
+.btn-toggle-auto:hover { filter: brightness(1.2); }
+.btn-toggle-auto.off { background: rgba(22,199,132,.12); color: var(--green); border-color: var(--green); }
+.btn-toggle-auto.on { background: rgba(234,57,67,.14); color: var(--red); border-color: var(--red); }
+
 .form-row-toggle {
   display: flex;
   justify-content: space-between;
@@ -780,4 +805,128 @@ body {
 }
 .btn-pm-action:hover {
   filter: brightness(1.2);
+}
+
+/* ============================================================ */
+/* =====================  RESPONSIVE  ========================= */
+/* ============================================================ */
+
+/* Large screens down to ~1280px — trim the side columns a touch. */
+@media (max-width: 1280px) {
+  #layout { grid-template-columns: 260px 1fr 290px; }
+}
+
+/* Below 1024px (tablets portrait/landscape + phones): drop the rigid
+   3-column terminal and stack every panel into one vertically-scrolling
+   column, so nothing is hidden or clipped. */
+@media (max-width: 1024px) {
+  /* the whole app scrolls instead of being a locked 100vh shell */
+  body { height: auto; min-height: 100vh; overflow-y: auto; overflow-x: hidden; }
+
+  #topbar { flex-wrap: wrap; gap: 8px 16px; }
+  .global-stats { order: 5; flex: 1 1 100%; gap: 14px; }
+
+  #layout {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    gap: 8px;
+  }
+
+  /* panels size to their content and flow; only specific inner lists scroll */
+  .panel, #main, #side, #side > .panel, #chart-area, #trading-hub {
+    overflow: visible;
+    min-height: 0;
+    max-height: none;
+  }
+  #side { display: flex; }              /* re-show the analysis panel */
+  #scanner { order: 1; }
+  #main    { order: 2; }
+  #side    { order: 3; }
+
+  /* scanner list gets a capped, internally-scrolling height */
+  #coin-list { max-height: 52vh; overflow-y: auto; }
+
+  /* the chart needs an explicit height now that its parent isn't fixed */
+  #chart-area { flex: 0 0 auto; }
+  #chart-wrap, #bookmap-view { height: 46vh; min-height: 300px; }
+
+  /* the trading hub flows with the page instead of being a 340px scroll box —
+     otherwise flex:1 panes collapse to 0 height once the parent is auto-sized */
+  .hub-panes { overflow: visible; flex: 0 0 auto; }
+  .hub-pane { height: auto; }
+  .positions-split, .order-forms, .autotrade-grids, .hub-pane .logs-section { flex: 0 0 auto; }
+  .logs-section { min-height: 0; }
+  .logs-window { height: auto; min-height: 130px; max-height: 220px; }
+
+  /* wide position/balance tables scroll sideways rather than crushing columns */
+  .pos-table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .trade-table { min-width: 460px; }
+}
+
+/* Phones (≤640px): tighter spacing, wrap all button rows, smaller chart. */
+@media (max-width: 640px) {
+  body { font-size: 12px; }
+  #topbar { gap: 6px 12px; padding: 8px 12px; }
+  .brand { font-size: 13px; }
+  .brand em { display: none; }
+  .clock { display: none; }
+  .global-stats { gap: 10px 14px; font-size: 11px; order: 5; flex: 1 1 100%; }
+  /* keep the CONNECT button reachable on the first row */
+  .user-badge { margin-left: auto; }
+
+  #layout { padding: 6px; gap: 6px; }
+  .panel { padding: 8px; }
+
+  .chart-header { flex-wrap: wrap; gap: 8px; }
+  .chart-source { margin-left: 0; flex: 1 1 100%; }
+  .tf-buttons, .ct-buttons, #overlay-toggles, .scanner-cats { flex-wrap: wrap; }
+  #overlay-toggles { margin-left: 0; }
+  /* fuller-width category buttons = bigger tap targets */
+  .scanner-cats button { flex: 1 1 28%; padding: 7px 6px; font-size: 10px; }
+
+  #chart-wrap, #bookmap-view { height: 42vh; min-height: 240px; }
+  .osc-row { height: 64px; }
+  #coin-list { max-height: 48vh; }
+  /* roomier scanner rows for touch */
+  .coin-row { padding: 8px 6px; }
+
+  /* trading hub: tabs + cards + forms stack cleanly */
+  .hub-tabs { flex-wrap: wrap; }
+  .hub-tabs button { flex: 1 1 auto; justify-content: center; font-size: 9px; padding: 7px 8px; }
+  .balances-row { flex-wrap: wrap; gap: 8px; }
+  .balances-row .bal-card { flex: 1 1 100%; }
+  .positions-split { grid-template-columns: 1fr; }
+  .form-cols, .form-grid-2, .autotrade-grids, .order-forms { grid-template-columns: 1fr; }
+  .sig-dir { font-size: 18px; width: 100%; }
+  .lvl-table { grid-template-columns: auto 1fr; gap: 4px 10px; }
+
+  /* comfortable, zoom-proof inputs (iOS auto-zooms inputs <16px on focus) */
+  .form-row input, .form-row select, .form-grid-2 input,
+  #search, .acct-form input, .acct-row input,
+  #crypto-amount, #crypto-leverage { font-size: 16px; padding: 8px; }
+  /* larger primary action buttons */
+  .btn-go, .btn-secondary, .radio-group button { padding: 9px 12px; }
+  .btn-close-pos { padding: 5px 8px; font-size: 10px; }
+
+  /* the accounts modal becomes a near-full-screen sheet */
+  .modal { width: 96vw; max-height: 92vh; padding: 12px; }
+  .acct-row { flex-wrap: wrap; }
+  .acct-row .btn-go { flex: 1 1 100%; }
+}
+
+/* Narrow phones (≤480px): collapse the signal level grid + tighten chrome. */
+@media (max-width: 480px) {
+  .global-stats { gap: 8px 12px; font-size: 10px; }
+  #chart-wrap, #bookmap-view { height: 38vh; min-height: 220px; }
+  .sig-grid { flex-direction: column; }
+  .lvl-table { grid-template-columns: auto 1fr auto; }
+  .coin-row .name { font-size: 9px; }
+}
+
+/* Very small phones (≤400px): drop the indicator grid to one column. */
+@media (max-width: 400px) {
+  .ind-grid { grid-template-columns: 1fr; }
+  .poly-quant { grid-template-columns: 1fr 1fr; }
+  .scanner-cats button { flex: 1 1 45%; }
 }

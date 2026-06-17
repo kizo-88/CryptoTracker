@@ -31,7 +31,7 @@
       </div>
       <input id="search" type="text" placeholder="search…" autocomplete="off" />
       <div class="scanner-head">
-        <span>ASSET</span><span>PRICE</span><span>24H</span><span>SIG</span>
+        <span>ASSET</span><span>PERP $</span><span>24H</span><span>SIG</span>
       </div>
       <div id="coin-list" class="coin-list">
         <div class="loading">scanning market…</div>
@@ -42,6 +42,7 @@
     <section id="main" class="panel">
       <!-- Top Chart Area -->
       <div id="chart-area">
+        <div id="backend-banner" class="hidden"></div>
         <div class="chart-header">
           <div id="coin-title" class="coin-title">BTC / USDT</div>
           <div class="tf-buttons" id="tf-buttons">
@@ -112,14 +113,14 @@
                 <div class="bal-val" id="bal-poly-paper">$10,000.00</div>
               </div>
               <div class="bal-card">
-                <div class="bal-label">MEXC LIVE</div>
+                <div class="bal-label">MEXC FUTURES</div>
                 <div class="bal-val" id="bal-mexc-live">DISCONNECTED</div>
               </div>
             </div>
             
             <div class="positions-split">
               <div class="pos-column">
-                <div class="column-title">CRYPTO SPOT POSITIONS</div>
+                <div class="column-title">CRYPTO FUTURES POSITIONS</div>
                 <div id="crypto-positions-list" class="pos-table-container">
                   <div class="hint">no open crypto positions</div>
                 </div>
@@ -136,26 +137,34 @@
           <!-- Pane 2: Manual Orders -->
           <div id="hub-pane-order" class="hub-pane hidden">
             <div class="order-forms">
-              <!-- Crypto Form -->
+              <!-- Crypto Futures Form -->
               <div class="order-form-box">
-                <div class="column-title">CRYPTO ORDER (<span id="order-crypto-symbol">BTC</span>)</div>
+                <div class="column-title">CRYPTO FUTURES ORDER (<span id="order-crypto-symbol">BTC</span> PERP)</div>
                 <div class="form-row">
                   <label>SIDE</label>
                   <div class="radio-group" id="crypto-side">
-                    <button class="btn-side BUY active" data-side="LONG">BUY (LONG)</button>
-                    <button class="btn-side SELL" data-side="SHORT">SELL (SHORT)</button>
+                    <button class="btn-side BUY active" data-side="LONG">LONG</button>
+                    <button class="btn-side SELL" data-side="SHORT">SHORT</button>
                   </div>
                 </div>
                 <div class="form-row">
                   <label>MODE</label>
                   <select id="crypto-mode">
                     <option value="paper">PAPER TRADING</option>
-                    <option value="live">LIVE (MEXC)</option>
+                    <option value="live">LIVE (MEXC FUTURES)</option>
                   </select>
                 </div>
                 <div class="form-row">
-                  <label>SIZE (USDT)</label>
-                  <input type="number" id="crypto-amount" value="100" min="5" />
+                  <div class="form-cols">
+                    <div>
+                      <label>MARGIN (USDT)</label>
+                      <input type="number" id="crypto-amount" value="100" min="5" />
+                    </div>
+                    <div>
+                      <label>LEVERAGE (x)</label>
+                      <input type="number" id="crypto-leverage" value="3" min="1" max="50" />
+                    </div>
+                  </div>
                 </div>
                 <div class="form-row">
                   <div class="form-cols">
@@ -171,7 +180,7 @@
                 </div>
                 <div class="form-row-actions">
                   <button id="btn-autofill-crypto" class="btn-secondary">AUTO-FILL FROM SIGNAL</button>
-                  <button id="btn-submit-crypto" class="btn-go">PLACE SPOT ORDER</button>
+                  <button id="btn-submit-crypto" class="btn-go">PLACE FUTURES ORDER</button>
                 </div>
                 <div id="crypto-order-status" class="status-msg"></div>
               </div>
@@ -213,15 +222,12 @@
               <!-- Crypto Autotrader settings -->
               <div class="autotrade-card">
                 <div class="column-title">CRYPTO BOT SETTINGS <span id="crypto-auto-dot" class="dot off"></span></div>
-                <div class="form-row-toggle">
-                  <label>AUTO-TRADING ENABLED</label>
-                  <input type="checkbox" id="crypto-auto-enabled" />
-                </div>
+                <button id="btn-toggle-crypto-auto" type="button" class="btn-toggle-auto off">▶ START AUTO-TRADE</button>
                 <div class="form-row">
                   <label>MODE</label>
                   <select id="crypto-auto-mode">
                     <option value="paper">PAPER TRADING</option>
-                    <option value="live">LIVE (MEXC)</option>
+                    <option value="live">LIVE (MEXC FUTURES)</option>
                   </select>
                 </div>
                 <div class="form-grid-2">
@@ -230,7 +236,7 @@
                     <input type="number" id="crypto-auto-confidence" min="1" max="100" />
                   </div>
                   <div>
-                    <label>USDT PER TRADE</label>
+                    <label>MARGIN PER TRADE (USDT)</label>
                     <input type="number" id="crypto-auto-size" min="5" />
                   </div>
                 </div>
@@ -244,16 +250,27 @@
                     <input type="number" id="crypto-auto-max" min="1" />
                   </div>
                 </div>
+                <div class="form-grid-2">
+                  <div>
+                    <label>LEVERAGE (x)</label>
+                    <input type="number" id="crypto-auto-leverage" min="1" max="50" />
+                  </div>
+                  <div>
+                    <label>BREAK-EVEN TRIGGER (%)</label>
+                    <input type="number" id="crypto-auto-be-trigger" min="0.1" step="0.1" />
+                  </div>
+                </div>
+                <div class="form-row-toggle">
+                  <label>AUTO MOVE SL → BREAK-EVEN IN PROFIT</label>
+                  <input type="checkbox" id="crypto-auto-be" />
+                </div>
                 <button id="btn-save-crypto-auto" class="btn-go">SAVE CRYPTO BOT</button>
               </div>
 
               <!-- Polymarket Autotrader settings -->
               <div class="autotrade-card">
                 <div class="column-title">POLYMARKET BOT SETTINGS <span id="poly-auto-dot" class="dot off"></span></div>
-                <div class="form-row-toggle">
-                  <label>AUTO-TRADING ENABLED</label>
-                  <input type="checkbox" id="poly-auto-enabled" />
-                </div>
+                <button id="btn-toggle-poly-auto" type="button" class="btn-toggle-auto off">▶ START AUTO-TRADE</button>
                 <div class="form-row">
                   <label>MODE</label>
                   <select id="poly-auto-mode">
@@ -337,6 +354,7 @@
             <span class="hint">keys stay in server memory only — create a read-only key in MEXC › API Management</span>
           </div>
         </div>
+        <div id="mexc-futures-result" class="acct-result"></div>
         <div id="mexc-result" class="acct-result"></div>
       </div>
 

@@ -30,7 +30,7 @@ services:
     container_name: cryptotracker-tunnel
     restart: unless-stopped
     profiles: ["tunnel"]
-    command: tunnel --no-autoupdate run
+    command: tunnel --no-autoupdate run --protocol http2
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
     depends_on:
