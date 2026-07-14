@@ -22,6 +22,16 @@ const DEFAULTS = {
     beEnabled: true,      // auto-move SL to break-even once a trade is in profit
     beTrigger: 0.4,       // favorable move (% of entry) that triggers the BE shift
   },
+  quantAutotrade: {
+    enabled: false,
+    mode: 'paper',        // quant bot places the same paper/live futures trades
+    intervalMin: 15,
+    minConfidence: 60,
+    usdtPerTrade: 100,
+    maxPositions: 4,
+    universe: 15,         // top perps by volume scanned per tick
+    leverage: 3,
+  },
   polymarketPaper: { balance: 10000, startBalance: 10000 },
   polymarketPositions: [], // open Polymarket positions
   polymarketHistory: [],   // closed Polymarket positions, newest first
@@ -45,6 +55,7 @@ function load() {
   try {
     state = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) };
     state.autotrade = { ...DEFAULTS.autotrade, ...state.autotrade };
+    state.quantAutotrade = { ...DEFAULTS.quantAutotrade, ...state.quantAutotrade };
     state.paper = { ...DEFAULTS.paper, ...state.paper };
     state.polymarketAutotrade = { ...DEFAULTS.polymarketAutotrade, ...state.polymarketAutotrade };
     state.polymarketPaper = { ...DEFAULTS.polymarketPaper, ...state.polymarketPaper };

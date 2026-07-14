@@ -7,13 +7,17 @@ const market = require('./market');
 const trading = require('./trading');
 const { buildSignal } = require('./signals');
 const polymarket = require('./polymarket');
+const { quantSignal } = require('./quant/signal');
 
 let timerCrypto = null;
 let timerPolymarket = null;
+let timerQuant = null;
 let runningCrypto = false;
 let runningPolymarket = false;
+let runningQuant = false;
 let lastTickCrypto = null;
 let lastTickPolymarket = null;
+let lastTickQuant = null;
 
 function log(msg, level = 'info') {
   const s = store.load();
@@ -89,6 +93,57 @@ async function tickCrypto() {
     log(`crypto tick failed: ${err.message}`, 'error');
   } finally {
     runningCrypto = false;
+  }
+}
+
+// Quant bot: entries come from the quant ensemble (ML alpha + momentum + mean
+// reversion) — never the TA signal engine. Exits/BE moves are shared: the
+// crypto tick's trading.manage() covers ALL open positions including quant's.
+async function tickQuant() {
+  if (runningQuant) return;
+  runningQuant = true;
+  lastTickQuant = new Date().toISOString();
+  try {
+    const cfg = store.load().quantAutotrade;
+    if (!cfg.enabled) return;
+
+    const open = store.load().positions;
+    const quantOpen = open.filter((p) => p.source === 'quant');
+    if (quantOpen.length >= cfg.maxPositions) return;
+    const held = new Set(open.map((p) => p.symbol));
+
+    const scan = await market.getScan();
+    const candidates = scan
+      .filter((c) => c.futures && !trading.STABLES.has(c.symbol) && !held.has(c.symbol))
+      .slice(0, cfg.universe);
+
+    for (const c of candidates) {
+      if (store.load().positions.filter((p) => p.source === 'quant').length >= cfg.maxPositions) break;
+      let sig;
+      try { sig = await quantSignal(c.binanceSymbol); } catch { continue; }
+      if (sig.direction === 'NEUTRAL' || sig.confidence < cfg.minConfidence) continue;
+      try {
+        const pos = await trading.open({
+          symbol: c.symbol,
+          binanceSymbol: c.binanceSymbol,
+          side: sig.direction,
+          usdt: cfg.usdtPerTrade,
+          price: sig.entry,
+          sl: sig.stopLoss,
+          tp: sig.takeProfits[0]?.price ?? null,
+          mode: cfg.mode,
+          leverage: cfg.leverage,
+          source: 'quant',
+        });
+        log(`QUANT opened ${pos.mode} ${pos.side} ${pos.symbol} ${pos.leverage}x $${cfg.usdtPerTrade} @ ${pos.entry} (score ${sig.score}, ml ${sig.components.ml ?? 'n/a'}, conf ${sig.confidence}%)`);
+      } catch (err) {
+        log(`QUANT could not open ${c.symbol}: ${err.message}`, 'error');
+      }
+    }
+  } catch (err) {
+    log(`quant tick failed: ${err.message}`, 'error');
+  } finally {
+    runningQuant = false;
   }
 }
 
@@ -198,6 +253,26 @@ function applyPolymarketTimer() {
   timerPolymarket = setInterval(tickPolymarket, mins * 60_000);
 }
 
+function applyQuantTimer() {
+  const cfg = store.load().quantAutotrade;
+  if (timerQuant) { clearInterval(timerQuant); timerQuant = null; }
+  const mins = Math.max(5, +cfg.intervalMin || 15); // ML retrains per tick — keep it sane
+  timerQuant = setInterval(tickQuant, mins * 60_000);
+}
+
+function configureQuant(patch) {
+  const s = store.load();
+  const allowed = ['enabled', 'mode', 'intervalMin', 'minConfidence', 'usdtPerTrade', 'maxPositions', 'universe', 'leverage'];
+  for (const k of allowed) if (k in patch) s.quantAutotrade[k] = patch[k];
+  s.quantAutotrade.mode = s.quantAutotrade.mode === 'live' ? 'live' : 'paper';
+  s.quantAutotrade.enabled = Boolean(s.quantAutotrade.enabled);
+  store.save();
+  applyQuantTimer();
+  if ('enabled' in patch) log(s.quantAutotrade.enabled ? `QUANT auto-trade STARTED (${s.quantAutotrade.mode} mode)` : 'QUANT auto-trade stopped');
+  if (s.quantAutotrade.enabled) tickQuant();
+  return s.quantAutotrade;
+}
+
 function configure(patch) {
   const s = store.load();
   const allowed = ['enabled', 'mode', 'intervalMin', 'minConfidence', 'usdtPerTrade', 'maxPositions', 'universe', 'candleInterval', 'leverage', 'beEnabled', 'beTrigger'];
@@ -228,6 +303,7 @@ function status() {
   const s = store.load();
   return {
     crypto: { ...s.autotrade, lastTick: lastTickCrypto },
+    quant: { ...s.quantAutotrade, lastTick: lastTickQuant },
     polymarket: { ...s.polymarketAutotrade, lastTick: lastTickPolymarket },
     log: s.log.slice(0, 40),
   };
@@ -236,11 +312,13 @@ function status() {
 function init() {
   applyCryptoTimer();
   applyPolymarketTimer();
+  applyQuantTimer();
   // Trigger initial checks silently in the background shortly after startup
   setTimeout(() => {
     tickCrypto();
     tickPolymarket();
+    tickQuant();
   }, 3000);
 }
 
-module.exports = { configure, configurePolymarket, status, init, tickCrypto, tickPolymarket };
+module.exports = { configure, configurePolymarket, configureQuant, status, init, tickCrypto, tickPolymarket, tickQuant };

@@ -1,0 +1,130 @@
+/* Quant Lab page — layout on top of the shared terminal theme (style.css) */
+
+.quant-body { overflow-y: auto; height: auto; min-height: 100vh; }
+
+#q-tabs {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  padding: 6px 8px; border-bottom: 1px solid var(--border); background: var(--panel);
+  position: sticky; top: 0; z-index: 20;
+}
+#q-tabs button {
+  background: var(--panel2); border: 1px solid var(--border); color: var(--dim);
+  font-family: var(--mono); font-size: 10px; letter-spacing: .5px;
+  padding: 6px 12px; border-radius: 4px; cursor: pointer;
+}
+#q-tabs button:hover { color: var(--text); border-color: var(--blue); }
+#q-tabs button.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+#q-main { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.q-tab { display: flex; flex-direction: column; gap: 8px; }
+
+.q-panel {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 10px; min-width: 0;
+}
+.q-row { display: flex; gap: 8px; align-items: stretch; min-width: 0; }
+.q-row .grow { flex: 1 1 auto; min-width: 0; }
+.q-row .side { flex: 0 0 300px; min-width: 0; }
+
+.q-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0 10px; }
+.q-select {
+  background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+  font-family: var(--mono); font-size: 11px; padding: 5px 8px; border-radius: 4px; outline: none;
+}
+.q-inline { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: var(--dim); }
+.q-inline input[type="number"] {
+  background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+  font-family: var(--mono); font-size: 11px; padding: 4px 6px; border-radius: 4px; outline: none;
+}
+.q-inline input[type="range"] { accent-color: var(--blue); width: 110px; }
+.q-inline b { color: var(--text); }
+
+.q-badges { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.q-badge {
+  font-size: 9px; padding: 3px 8px; border-radius: 3px; letter-spacing: .5px;
+  background: rgba(59,130,246,.12); color: var(--blue); border: 1px solid rgba(59,130,246,.4);
+}
+.q-badge.amber { background: rgba(240,185,11,.1); color: var(--amber); border-color: rgba(240,185,11,.4); }
+.q-badge.green { background: rgba(22,199,132,.1); color: var(--green); border-color: rgba(22,199,132,.4); }
+
+/* stat cards row */
+.q-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; margin: 8px 0; }
+.q-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; padding: 7px 10px; }
+.q-card .k { font-size: 9px; color: var(--dim); letter-spacing: .5px; }
+.q-card .v { font-size: 15px; font-weight: bold; color: var(--text); margin-top: 2px; }
+.q-card .v.up { color: var(--green); }
+.q-card .v.down { color: var(--red); }
+.q-card .v.blue { color: var(--blue); }
+.q-card .v.amber { color: var(--amber); }
+.q-card .s { font-size: 9px; color: var(--dim); margin-top: 1px; }
+
+.q-canvas { width: 100%; display: block; background: #06090f; border: 1px solid var(--border); border-radius: 4px; }
+.q-chart-host { height: 380px; position: relative; }
+
+.q-kv div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dashed var(--border); padding: 4px 0; font-size: 11px; }
+.q-kv span { color: var(--dim); }
+.q-kv b { color: var(--text); }
+
+.q-mini-table div.row { display: flex; justify-content: space-between; border-bottom: 1px dashed rgba(30,41,63,.5); padding: 3px 0; font-size: 11px; }
+.q-mini-table .sym { color: var(--text); font-weight: bold; }
+
+.q-note {
+  font-size: 10px; color: var(--dim); border: 1px dashed var(--border); border-radius: 4px;
+  padding: 7px 10px; margin-top: 8px; line-height: 1.5;
+}
+.q-scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.q-scroll-x .trade-table { min-width: 560px; }
+.trade-table td.num, .trade-table th.num { text-align: right; }
+.trade-table tr.atm td { background: rgba(240,185,11,.07); }
+.trade-table tr.clickable { cursor: pointer; }
+.trade-table tr.clickable:hover td { background: var(--panel2); }
+
+/* horizontal HTML bars (weights, importance) */
+.q-bar-row { display: grid; grid-template-columns: 64px 1fr 64px; gap: 8px; align-items: center; padding: 3px 0; font-size: 10px; }
+.q-bar-row .nm { color: var(--text); font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-bar-row .val { text-align: right; color: var(--dim); }
+.q-bar { height: 9px; background: var(--panel2); border-radius: 2px; overflow: hidden; position: relative; }
+.q-bar i { position: absolute; top: 0; bottom: 0; background: var(--blue); border-radius: 2px; }
+.q-bar i.amber { background: var(--amber); }
+.q-bar i.green { background: var(--green); }
+.q-bar i.red { background: var(--red); }
+
+/* factor sliders */
+.fac-slider { margin-bottom: 8px; }
+.fac-slider .head { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px; }
+.fac-slider .head .nm { color: var(--text); font-weight: bold; }
+.fac-slider .head .vv { color: var(--amber); }
+.fac-slider .head .ds { color: var(--dim); font-size: 9px; }
+.fac-slider input[type="range"] { width: 100%; accent-color: var(--blue); }
+
+/* HFT tape */
+.q-tape { max-height: 190px; overflow-y: auto; font-size: 10px; }
+.q-tape div { display: flex; justify-content: space-between; gap: 6px; padding: 2px 0; border-bottom: 1px solid rgba(30,41,63,.3); }
+.q-tape .b { color: var(--green); }
+.q-tape .s { color: var(--red); }
+.q-tape .us { color: var(--amber); font-weight: bold; }
+
+/* signal card on trade tab */
+.q-sig-dir { font-size: 22px; font-weight: bold; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; text-align: center; }
+.q-sig-dir.LONG { background: rgba(22,199,132,.12); color: var(--green); border: 1px solid var(--green); }
+.q-sig-dir.SHORT { background: rgba(234,57,67,.12); color: var(--red); border: 1px solid var(--red); }
+.q-sig-dir.NEUTRAL { background: rgba(240,185,11,.08); color: var(--amber); border: 1px solid var(--amber); }
+.q-sig-dir small { display: block; font-size: 10px; font-weight: normal; opacity: .85; margin-top: 3px; }
+
+/* component z-score bars: diverging around a center zero line */
+.q-comp { margin: 4px 0 8px; }
+.q-comp .q-comp-row { display: grid; grid-template-columns: 92px 1fr 44px; gap: 6px; align-items: center; font-size: 10px; padding: 2px 0; }
+.q-comp .lbl { color: var(--dim); }
+.q-comp .track { position: relative; height: 9px; background: var(--panel2); border-radius: 2px; }
+.q-comp .track::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--border); }
+.q-comp .track i { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+.q-comp .zv { text-align: right; color: var(--text); }
+
+/* responsive: stack side panels on narrow screens */
+@media (max-width: 900px) {
+  .q-row { flex-direction: column; }
+  .q-row .side { flex: 1 1 auto; }
+  .q-chart-host { height: 300px; }
+  #q-tabs button { flex: 1 1 30%; padding: 8px 6px; }
+  .q-inline input[type="range"] { width: 90px; }
+}

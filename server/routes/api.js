@@ -7,6 +7,15 @@ const mexcFutures = require('../services/mexcFutures');
 const { buildSignal } = require('../services/signals');
 const trading = require('../services/trading');
 const autotrader = require('../services/autotrader');
+const qOptions = require('../services/quant/options');
+const qFactors = require('../services/quant/factors');
+const qMl = require('../services/quant/ml');
+const qArb = require('../services/quant/arb');
+const qOptimizer = require('../services/quant/optimizer');
+const qRisk = require('../services/quant/risk');
+const qStatarb = require('../services/quant/statarb');
+const { quantSignal } = require('../services/quant/signal');
+const qData = require('../services/quant/data');
 
 const router = express.Router();
 
@@ -187,10 +196,45 @@ router.post(
       return autotrader.configure(config);
     } else if (mkt === 'polymarket') {
       return autotrader.configurePolymarket(config);
+    } else if (mkt === 'quant') {
+      return autotrader.configureQuant(config);
     } else {
-      throw new Error('invalid market type — expected crypto or polymarket');
+      throw new Error('invalid market type — expected crypto, quant or polymarket');
     }
   })
 );
+
+// ================= QUANT LAB =================
+// Perp universe (symbol list for pickers)
+router.get('/quant/universe', handle(async () => {
+  const uni = await qData.getUniverse(110);
+  return uni.map((u) => ({ symbol: u.symbol, base: u.base, sector: u.sector }));
+}));
+
+// Option pricing engine: chain + greeks + timing benchmark
+router.get('/quant/options', handle((req) => qOptions.getChain((req.query.binance || 'BTCUSDT').toUpperCase())));
+
+// Factor model: overview (scores + single-factor stats) and blended backtest
+router.get('/quant/factors', handle(() => qFactors.overview()));
+router.post('/quant/factors/backtest', handle((req) => qFactors.backtest(req.body?.exposures || {})));
+
+// ML alpha model: walk-forward train + OOS evaluation
+router.get('/quant/ml', handle((req) => qMl.run((req.query.binance || 'BTCUSDT').toUpperCase())));
+
+// Cross-exchange arbitrage scanner
+router.get('/quant/arb', handle((req) => qArb.scan(req.query)));
+
+// Constrained max-Sharpe portfolio optimizer
+router.get('/quant/optimize', handle((req) => qOptimizer.optimize(req.query)));
+
+// Risk engine: VaR / ES / stress tests
+router.get('/quant/risk', handle((req) => qRisk.analyze(req.query.basis || 'optimized', +req.query.notional || 10000)));
+
+// Stat-arb pair sweep + pair detail
+router.get('/quant/statarb', handle(() => qStatarb.sweep(60)));
+router.get('/quant/statarb/pair', handle((req) => qStatarb.pairDetail(req.query.a, req.query.b)));
+
+// Quant-only trade signal (ensemble: ML + momentum + mean reversion)
+router.get('/quant/signal', handle((req) => quantSignal((req.query.binance || 'BTCUSDT').toUpperCase())));
 
 module.exports = router;

@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quant Lab — CryptoTracker</title>
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="quant.css" />
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body class="quant-body">
+  <header id="topbar">
+    <div class="brand"><img src="asset/terminal.png" alt="" class="brand-icon" />QUANT<span>LAB</span> <em>RESEARCH TERMINAL</em></div>
+    <div class="global-stats" id="q-status">initialising engines…</div>
+    <a href="index.html" class="user-badge" style="text-decoration:none">← TERMINAL</a>
+    <div id="clock" class="clock"></div>
+  </header>
+
+  <nav id="q-tabs">
+    <button data-tab="trade" class="active">⚡ QUANT TRADE</button>
+    <button data-tab="options">OPTIONS ENGINE</button>
+    <button data-tab="factors">FACTOR MODEL</button>
+    <button data-tab="hft">HFT SIM</button>
+    <button data-tab="ml">ML ALPHA</button>
+    <button data-tab="arb">ARBITRAGE</button>
+    <button data-tab="optimizer">OPTIMIZER</button>
+    <button data-tab="risk">RISK ENGINE</button>
+    <button data-tab="statarb">STAT-ARB</button>
+  </nav>
+
+  <main id="q-main">
+
+    <!-- ============ TAB: QUANT TRADE ============ -->
+    <section id="tab-trade" class="q-tab">
+      <div class="q-row">
+        <div class="q-panel grow">
+          <div class="panel-title">QUANT SIGNAL CHART <span id="qt-symbol-label" class="sub">BTCUSDT</span></div>
+          <div class="q-controls">
+            <select id="qt-symbol" class="q-select"></select>
+            <button id="qt-refresh" class="btn-go">ANALYSE</button>
+            <span class="hint">signal = ML alpha (boosted trees) + momentum + mean-reversion — no classic TA</span>
+          </div>
+          <div id="qt-chart" class="q-chart-host"></div>
+        </div>
+        <div class="q-panel side">
+          <div class="panel-title">QUANT SIGNAL</div>
+          <div id="qt-signal"><div class="loading">select a symbol…</div></div>
+          <div class="panel-title" style="margin-top:10px">QUANT BOT <span id="qbot-dot" class="dot off"></span></div>
+          <button id="btn-toggle-quant" class="btn-toggle-auto off">▶ START QUANT AUTO-TRADE</button>
+          <div class="form-grid-2">
+            <div><label>MODE</label>
+              <select id="qbot-mode" class="q-select" style="width:100%">
+                <option value="paper">PAPER</option>
+                <option value="live">LIVE (MEXC FUTURES)</option>
+              </select>
+            </div>
+            <div><label>MIN CONFIDENCE %</label><input type="number" id="qbot-conf" min="50" max="95" /></div>
+            <div><label>MARGIN / TRADE $</label><input type="number" id="qbot-size" min="5" /></div>
+            <div><label>LEVERAGE ×</label><input type="number" id="qbot-lev" min="1" max="20" /></div>
+            <div><label>MAX POSITIONS</label><input type="number" id="qbot-max" min="1" max="10" /></div>
+            <div><label>INTERVAL MIN</label><input type="number" id="qbot-interval" min="5" /></div>
+          </div>
+          <button id="btn-save-quant" class="btn-secondary" style="margin-top:6px">SAVE CONFIG</button>
+          <div class="hint" style="margin-top:6px">exits reuse the shared engine: SL/TP + auto break-even protect quant trades too</div>
+        </div>
+      </div>
+      <div class="q-panel">
+        <div class="panel-title">QUANT POSITIONS (source = quant)</div>
+        <div id="qt-positions" class="pos-table-container"><div class="hint">no quant positions yet</div></div>
+      </div>
+    </section>
+
+    <!-- ============ TAB: OPTIONS ============ -->
+    <section id="tab-options" class="q-tab hidden">
+      <div class="q-panel">
+        <div class="panel-title">REAL-TIME OPTION PRICING ENGINE <span class="sub">Black-Scholes greeks + CRR American binomial + IV solver</span></div>
+        <div class="q-controls">
+          <select id="opt-symbol" class="q-select">
+            <option value="BTCUSDT">BTC</option><option value="ETHUSDT">ETH</option>
+            <option value="SOLUSDT">SOL</option><option value="XRPUSDT">XRP</option><option value="BNBUSDT">BNB</option>
+          </select>
+          <button id="opt-run" class="btn-go">PRICE CHAIN</button>
+          <span id="opt-timing" class="q-badges"></span>
+        </div>
+        <div id="opt-meta" class="q-cards"></div>
+        <div class="q-controls" id="opt-expiries"></div>
+        <div class="q-scroll-x"><table class="trade-table" id="opt-chain"></table></div>
+      </div>
+      <div class="q-row">
+        <div class="q-panel grow">
+          <div class="panel-title">GREEKS ACROSS STRIKES <span class="sub" id="opt-greek-label"></span></div>
+          <canvas id="opt-greeks" class="q-canvas" height="220"></canvas>
+        </div>
+        <div class="q-panel side">
+          <div class="panel-title">AMERICAN vs EUROPEAN + STABILITY</div>
+          <div id="opt-american" class="q-kv"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TAB: FACTORS ============ -->
+    <section id="tab-factors" class="q-tab hidden">
+      <div class="q-row">
+        <div class="q-panel side">
+          <div class="panel-title">FACTOR EXPOSURES <span class="sub">drag, then backtest</span></div>
+          <div id="fac-sliders"></div>
+          <button id="fac-run" class="btn-go" style="margin-top:8px;width:100%">BACKTEST BLEND</button>
+          <div class="hint" style="margin-top:6px">weekly-rebalanced dollar-neutral long/short across the 100+ perp universe</div>
+        </div>
+        <div class="q-panel grow">
+          <div class="panel-title">BLEND EQUITY CURVE</div>
+          <div id="fac-stats" class="q-cards"></div>
+          <canvas id="fac-curve" class="q-canvas" height="240"></canvas>
+          <div class="q-row" style="margin-top:8px">
+            <div class="grow"><div class="column-title">TOP LONGS</div><div id="fac-longs" class="q-mini-table"></div></div>
+            <div class="grow"><div class="column-title">TOP SHORTS</div><div id="fac-shorts" class="q-mini-table"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="q-panel">
+        <div class="panel-title">SINGLE-FACTOR PERFORMANCE (each factor alone, same engine)</div>
+        <div id="fac-singles" class="q-scroll-x"></div>
+      </div>
+    </section>
+
+    <!-- ============ TAB: HFT SIM ============ -->
+    <section id="tab-hft" class="q-tab hidden">
+      <div class="q-panel">
+        <div class="panel-title">HIGH-FREQUENCY MARKET SIMULATOR <span class="sub">1ms ticks · L2 book dynamics · latency-constrained market making</span></div>
+        <div class="q-controls">
+          <button id="hft-toggle" class="btn-go">▶ RUN</button>
+          <button id="hft-reset" class="btn-secondary">RESET</button>
+          <label class="q-inline">LATENCY <input type="range" id="hft-latency" min="0" max="300" value="50" /> <b id="hft-latency-v">50ms</b></label>
+          <label class="q-inline">QUOTE SPREAD <input type="range" id="hft-spread" min="1" max="30" value="6" /> <b id="hft-spread-v">6bps</b></label>
+          <label class="q-inline">SPEED <select id="hft-speed" class="q-select"><option value="1">1×</option><option value="10" selected>10×</option><option value="50">50×</option></select></label>
+        </div>
+        <div class="q-row">
+          <canvas id="hft-canvas" class="q-canvas grow" height="330"></canvas>
+          <div class="q-panel side" style="border:none;padding:0">
+            <div class="column-title">STRATEGY TELEMETRY</div>
+            <div id="hft-stats" class="q-kv"></div>
+            <div class="column-title" style="margin-top:8px">TRADE TAPE</div>
+            <div id="hft-tape" class="q-tape"></div>
+          </div>
+        </div>
+        <div class="hint">the market maker quotes both sides at your spread but sees the book LATENCY ms late and its quotes take LATENCY ms to land — raise latency and watch adverse selection eat the spread. Everything here is synthetic and client-side.</div>
+      </div>
+    </section>
+
+    <!-- ============ TAB: ML ALPHA ============ -->
+    <section id="tab-ml" class="q-tab hidden">
+      <div class="q-panel">
+        <div class="panel-title">MACHINE-LEARNING ALPHA MODEL <span class="sub">gradient-boosted trees + ridge · walk-forward out-of-sample</span></div>
+        <div class="q-controls">
+          <select id="ml-symbol" class="q-select"></select>
+          <button id="ml-run" class="btn-go">TRAIN + EVALUATE</button>
+          <span id="ml-timing" class="q-badges"></span>
+        </div>
+        <div id="ml-cards" class="q-cards"></div>
+        <div class="q-row">
+          <div class="grow">
+            <div class="column-title">OOS EQUITY: STRATEGY vs BUY&HOLD</div>
+            <canvas id="ml-curve" class="q-canvas" height="240"></canvas>
+          </div>
+          <div class="side">
+            <div class="column-title">FEATURE IMPORTANCE (boosting gain)</div>
+            <div id="ml-importance"></div>
+          </div>
+        </div>
+        <div id="ml-note" class="q-note"></div>
+      </div>
+    </section>
+
+    <!-- ============ TAB: ARBITRAGE ============ -->
+    <section id="tab-arb" class="q-tab hidden">
+      <div class="q-panel">
+        <div class="panel-title">CROSS-EXCHANGE ARBITRAGE SCANNER <span class="sub">6 venues · executable bid/ask · fees + latency + slippage simulated</span></div>
+        <div class="q-controls">
+          <label class="q-inline">FEE <input type="number" id="arb-fee" value="10" min="0" style="width:52px" />bps/side</label>
+          <label class="q-inline">SLIPPAGE <input type="number" id="arb-slip" value="5" min="0" style="width:52px" />bps</label>
+          <label class="q-inline">LATENCY <input type="number" id="arb-lat" value="200" min="0" style="width:60px" />ms</label>
+          <label class="q-inline">SIZE $<input type="number" id="arb-size" value="1000" min="10" style="width:70px" /></label>
+          <button id="arb-run" class="btn-go">SCAN</button>
+          <label class="q-inline"><input type="checkbox" id="arb-auto" checked /> auto 10s</label>
+          <span id="arb-status" class="q-badges"></span>
+        </div>
+        <div class="column-title">OPPORTUNITIES (net of costs)</div>
+        <div class="q-scroll-x"><table class="trade-table" id="arb-opps"></table></div>
+        <div class="column-title" style="margin-top:10px">RAW QUOTE GRID (bid/ask)</div>
+        <div class="q-scroll-x"><table class="trade-table" id="arb-grid"></table></div>
+        <div id="arb-note" class="q-note"></div>
+      </div>
+    </section>
+
+    <!-- ============ TAB: OPTIMIZER ============ -->
+    <section id="tab-optimizer" class="q-tab hidden">
+      <div class="q-panel">
+        <div class="panel-title">CONSTRAINED PORTFOLIO OPTIMIZER <span class="sub">max Sharpe · 100+ assets · projected gradient</span></div>
+        <div class="q-controls">
+          <label class="q-inline">MAX WEIGHT <input type="number" id="po-maxw" value="10" min="1" max="100" style="width:52px" />%</label>
+          <label class="q-inline">SECTOR CAP <input type="number" id="po-sector" value="30" min="5" max="100" style="width:52px" />%</label>
+          <label class="q-inline">TURNOVER PENALTY <input type="number" id="po-turn" value="0.5" min="0" max="5" step="0.1" style="width:52px" /></label>
+          <button id="po-run" class="btn-go">OPTIMIZE</button>
+          <span id="po-timing" class="q-badges"></span>
+        </div>
+        <div id="po-stats" class="q-cards"></div>
+        <div class="q-row">
+          <div class="grow">
+            <div class="column-title">WEIGHTS (top holdings)</div>
+            <div id="po-holdings"></div>
+          </div>
+          <div class="side">
+            <div class="column-title">EFFICIENT FRONTIER</div>
+            <canvas id="po-frontier" class="q-canvas" height="180"></canvas>
+            <div class="column-title" style="margin-top:8px">SECTOR EXPOSURE</div>
+            <div id="po-sectors"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TAB: RISK ============ -->
+    <section id="tab-risk" class="q-tab hidden">
+      <div class="q-panel">
+        <div class="panel-title">PORTFOLIO RISK ENGINE <span class="sub">99% VaR · expected shortfall · historical crash stress tests</span></div>
+        <div class="q-controls">
+          <select id="risk-basis" class="q-select">
+            <option value="optimized">MAX-SHARPE OPTIMIZED PORTFOLIO</option>
+            <option value="equal">EQUAL-WEIGHT TOP 30</option>
+            <option value="positions">MY OPEN POSITIONS</option>
+          </select>
+          <label class="q-inline">NOTIONAL $<input type="number" id="risk-notional" value="10000" min="100" style="width:80px" /></label>
+          <button id="risk-run" class="btn-go">ANALYSE RISK</button>
+        </div>
+        <div id="risk-cards" class="q-cards"></div>
+        <div class="q-row">
+          <div class="grow">
+            <div class="column-title">DAILY RETURN DISTRIBUTION (250d) + VaR</div>
+            <canvas id="risk-hist" class="q-canvas" height="220"></canvas>
+          </div>
+          <div class="side">
+            <div class="column-title">COMPONENT VaR (top contributors)</div>
+            <div id="risk-comp" class="q-mini-table"></div>
+          </div>
+        </div>
+        <div class="column-title" style="margin-top:10px">STRESS TESTS — HISTORICAL CRASH SCENARIOS</div>
+        <div class="q-scroll-x"><table class="trade-table" id="risk-stress"></table></div>
+        <div id="risk-note" class="q-note"></div>
+      </div>
+    </section>
+
+    <!-- ============ TAB: STAT-ARB ============ -->
+    <section id="tab-statarb" class="q-tab hidden">
+      <div class="q-panel">
+        <div class="panel-title">STATISTICAL ARBITRAGE BACKTESTER <span class="sub">1,700+ pair strategies · cointegration screen · noise ceiling</span></div>
+        <div class="q-controls">
+          <button id="sa-run" class="btn-go">RUN 1,770-PAIR SWEEP</button>
+          <span id="sa-timing" class="q-badges"></span>
+        </div>
+        <div id="sa-cards" class="q-cards"></div>
+        <div class="q-row">
+          <div class="grow">
+            <div class="column-title">SHARPE DISTRIBUTION ACROSS ALL PAIRS <span class="hint">red line = expected max Sharpe from pure noise</span></div>
+            <canvas id="sa-hist" class="q-canvas" height="220"></canvas>
+          </div>
+          <div class="side">
+            <div class="column-title">PAIR SPREAD Z-SCORE <span id="sa-pair-label" class="hint"></span></div>
+            <canvas id="sa-zchart" class="q-canvas" height="220"></canvas>
+          </div>
+        </div>
+        <div class="q-row" style="margin-top:8px">
+          <div class="grow">
+            <div class="column-title">TOP BY SHARPE (all pairs — mostly noise!)</div>
+            <div class="q-scroll-x"><table class="trade-table" id="sa-top-all"></table></div>
+          </div>
+          <div class="grow">
+            <div class="column-title">TOP COINTEGRATED (ADF t &lt; −3 — the real candidates)</div>
+            <div class="q-scroll-x"><table class="trade-table" id="sa-top-coint"></table></div>
+          </div>
+        </div>
+        <div id="sa-note" class="q-note"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer id="disclaimer">
+    <img src="asset/shield.png" alt="" /> Research &amp; education tooling. All backtests are simulations on historical data — past performance ≠ future returns.
+  </footer>
+
+  <script src="quant.js"></script>
+</body>
+</html>
