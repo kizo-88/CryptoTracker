@@ -4,6 +4,11 @@
 const { cached } = require('../cache');
 
 const FAPI = 'https://fapi.binance.com';
+// Spot mirrors used when fapi is unreachable from the host (cloud IPs often get
+// 418/451 from fapi — data-api.binance.vision is Binance's public data mirror).
+// Returns/vol math is scale-invariant, so spot closes are a sound stand-in;
+// multiplier-prefixed perps (1000PEPE…) don't exist on spot and simply drop out.
+const SPOT_HOSTS = ['https://api.binance.com', 'https://data-api.binance.vision'];
 
 async function fetchJson(url, timeoutMs = 15000) {
   const res = await fetch(url, {
@@ -12,6 +17,20 @@ async function fetchJson(url, timeoutMs = 15000) {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
   return res.json();
+}
+
+/** klines with futures→spot-mirror fallback; same response shape. */
+async function klinesAnyHost(symbol, interval, limit) {
+  let lastErr;
+  try {
+    return await fetchJson(`${FAPI}/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
+  } catch (err) { lastErr = err; }
+  for (const host of SPOT_HOSTS) {
+    try {
+      return await fetchJson(`${host}/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
+    } catch (err) { lastErr = err; }
+  }
+  throw lastErr;
 }
 
 // crude sector tags for constraint handling in the optimizer / risk engine
@@ -40,10 +59,15 @@ function baseOf(symbol) {
   return b;
 }
 
-/** Top-N USDⓈ-M perps by 24h quote volume. */
+/** Top-N USDⓈ-M perps by 24h quote volume (spot-mirror fallback if fapi is blocked). */
 async function getUniverse(n = 110) {
   return cached(`quant:universe:${n}`, 6 * 3600_000, async () => {
-    const raw = await fetchJson(`${FAPI}/fapi/v1/ticker/24hr`);
+    let raw, lastErr;
+    const hosts = [`${FAPI}/fapi/v1/ticker/24hr`, ...SPOT_HOSTS.map((h) => `${h}/api/v3/ticker/24hr`)];
+    for (const url of hosts) {
+      try { raw = await fetchJson(url); break; } catch (err) { lastErr = err; }
+    }
+    if (!raw) throw lastErr;
     return raw
       .filter((t) => t.symbol.endsWith('USDT') && !t.symbol.includes('_'))
       .map((t) => ({ symbol: t.symbol, base: baseOf(t.symbol), quoteVolume: +t.quoteVolume }))
@@ -55,7 +79,7 @@ async function getUniverse(n = 110) {
 }
 
 async function dailyCloses(symbol, limit = 400) {
-  const raw = await fetchJson(`${FAPI}/fapi/v1/klines?symbol=${symbol}&interval=1d&limit=${limit}`);
+  const raw = await klinesAnyHost(symbol, '1d', limit);
   // drop today's partial candle
   return raw.slice(0, -1).map((k) => ({ time: +k[0], close: +k[4], volume: +k[7] }));
 }
@@ -135,7 +159,7 @@ async function getFunding() {
 /** Hourly klines for one symbol (ML features / options realized vol). */
 async function hourlyKlines(symbol, limit = 1000) {
   return cached(`quant:h1:${symbol}:${limit}`, 15 * 60_000, async () => {
-    const raw = await fetchJson(`${FAPI}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=${limit}`);
+    const raw = await klinesAnyHost(symbol, '1h', limit);
     return raw.map((k) => ({
       time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5],
     }));
