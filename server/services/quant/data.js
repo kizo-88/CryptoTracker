@@ -156,9 +156,40 @@ async function getFunding() {
   });
 }
 
-/** Hourly klines for one symbol (ML features / options realized vol). */
+// TradFi symbols served via Yahoo Finance (Binance has no XAUUSD). Added after
+// the XAUUSD pattern study so gold/silver/oil work in the ML + signal + crossover
+// modules. These are analysis-only — the quant bot's tradeable universe stays
+// crypto (it scans market.getScan), and MEXC has no gold instrument anyway.
+const TRADFI = {
+  XAUUSD: { yahoo: 'GC=F', name: 'Gold futures (COMEX)', sector: 'COMMODITY' },
+  XAGUSD: { yahoo: 'SI=F', name: 'Silver futures', sector: 'COMMODITY' },
+  WTIUSD: { yahoo: 'CL=F', name: 'WTI crude futures', sector: 'COMMODITY' },
+};
+
+async function yahooHourly(ticker, limit) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1h&range=3mo`;
+  const res = await fetch(url, {
+    headers: { accept: 'application/json', 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!res.ok) throw new Error(`Yahoo HTTP ${res.status} for ${ticker}`);
+  const j = await res.json();
+  const r = j.chart?.result?.[0];
+  if (!r?.timestamp?.length) throw new Error(`no Yahoo data for ${ticker}`);
+  const q = r.indicators.quote[0];
+  const out = [];
+  for (let i = 0; i < r.timestamp.length; i++) {
+    if (q.close[i] == null || q.open[i] == null) continue;
+    out.push({ time: r.timestamp[i], open: +q.open[i], high: +q.high[i], low: +q.low[i], close: +q.close[i], volume: +(q.volume?.[i] || 0) });
+  }
+  return out.slice(-limit);
+}
+
+/** Hourly klines for one symbol (ML features / options realized vol).
+    Crypto perps come from Binance; TRADFI symbols route to Yahoo. */
 async function hourlyKlines(symbol, limit = 1000) {
   return cached(`quant:h1:${symbol}:${limit}`, 15 * 60_000, async () => {
+    if (TRADFI[symbol]) return yahooHourly(TRADFI[symbol].yahoo, limit);
     const raw = await klinesAnyHost(symbol, '1h', limit);
     return raw.map((k) => ({
       time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5],
@@ -166,4 +197,4 @@ async function hourlyKlines(symbol, limit = 1000) {
   });
 }
 
-module.exports = { getUniverse, getMatrix, getFunding, hourlyKlines, sectorOf, baseOf };
+module.exports = { getUniverse, getMatrix, getFunding, hourlyKlines, sectorOf, baseOf, TRADFI };

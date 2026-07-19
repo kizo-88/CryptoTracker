@@ -175,7 +175,9 @@ let qtPoll = null;
 
 async function initTrade() {
   const uni = window.__universe || (await apiJson('/api/quant/universe').catch(() => []));
-  $('#qt-symbol').innerHTML = uni.slice(0, 40).map((u) => `<option value="${u.symbol}">${u.base}</option>`).join('') || '<option value="BTCUSDT">BTC</option>';
+  // tradfi symbols (XAU/XAG/WTI via Yahoo) come first in the list; default stays BTC
+  $('#qt-symbol').innerHTML = uni.slice(0, 43).map((u) => `<option value="${u.symbol}">${u.base}${u.yahoo ? ' ◆' : ''}</option>`).join('') || '<option value="BTCUSDT">BTC</option>';
+  if (uni.some((u) => u.symbol === 'BTCUSDT')) $('#qt-symbol').value = 'BTCUSDT';
 
   qtChart = LightweightCharts.createChart($('#qt-chart'), {
     layout: { background: { color: 'transparent' }, textColor: C.dim, fontFamily: 'Consolas, monospace' },
@@ -199,9 +201,15 @@ async function loadTrade() {
   const sym = $('#qt-symbol').value || 'BTCUSDT';
   $('#qt-symbol-label').textContent = sym;
   $('#qt-signal').innerHTML = '<div class="loading">running quant ensemble…</div>';
+  loadCrossover(sym);
   try {
+    // tradfi symbols chart via the Yahoo signal route; crypto via Binance
+    const uniEntry = (window.__universe || []).find((u) => u.symbol === sym);
+    const candlePath = uniEntry?.yahoo
+      ? `/api/signal?source=yahoo&symbol=${encodeURIComponent(uniEntry.yahoo)}&interval=1h`
+      : `/api/signal?binance=${sym}&interval=1h`;
     const [candleData, sig] = await Promise.all([
-      apiJson(`/api/signal?binance=${sym}&interval=1h`),
+      apiJson(candlePath),
       apiJson(`/api/quant/signal?binance=${sym}`),
     ]);
     qtSeries.setData(candleData.candles.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
@@ -314,6 +322,35 @@ async function loadQuantPositions() {
     }));
   } catch { /* offline */ }
 }
+
+/* ----- SMA 5/20 crossover monitor (the XAUUSD-study strategy) ----- */
+async function loadCrossover(sym) {
+  $('#xm-symbol').textContent = sym;
+  try {
+    const d = await apiJson(`/api/quant/crossover?symbol=${sym}&fast=5&slow=20`);
+    const c2 = d.current;
+    if (!c2) { $('#xm-body').innerHTML = '<div class="hint">no crossover state yet</div>'; return; }
+    const sideCls = c2.side === 'LONG' ? 'up' : 'down';
+    $('#xm-body').innerHTML = `
+      ${cards([
+        { k: 'CURRENT SIGNAL', v: c2.side, cls: sideCls, s: 'since ' + new Date(c2.since * 1000).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) },
+        { k: 'LEG ENTRY → NOW', v: `$${fmtPx(c2.entry)} → $${fmtPx(c2.price)}` },
+        { k: 'OPEN LEG P&L', v: signTxt(c2.legPnlPct, 2) + '%', cls: signCls(c2.legPnlPct) },
+        { k: `WINDOW (${d.windowDays}d, 1bp/side)`, v: signTxt(d.stats.totalPct, 1) + '%', cls: signCls(d.stats.totalPct), s: `Sharpe ${d.stats.sharpe} · ${d.stats.flips} flips · ${d.stats.hitPct}% legs won` },
+      ])}
+      <div class="hint">${d.note}</div>`;
+    $('#xm-legs').innerHTML = d.legs.map((l) => `
+      <div class="row">
+        <span class="sym"><span class="${l.side === 'LONG' ? 'up' : 'down'}">${l.side === 'LONG' ? '▲' : '▼'}</span>
+          ${new Date(l.time * 1000).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+          <span class="hint">@ ${fmtPx(l.price)}</span></span>
+        <b class="${signCls(l.pnlPct)}">${signTxt(l.pnlPct, 2)}%${l.open ? ' <span class="hint">open</span>' : ''}</b>
+      </div>`).join('') || '<div class="hint">no flips in window</div>';
+  } catch (e) {
+    $('#xm-body').innerHTML = `<div class="hint">⚠ ${e.message}</div>`;
+  }
+}
+setInterval(() => { if (activeTab === 'trade') loadCrossover($('#qt-symbol').value || 'BTCUSDT'); }, 5 * 60_000);
 
 /* ============================================================ */
 /* TAB 2: OPTIONS ENGINE                                         */
@@ -644,7 +681,8 @@ function initHft() {
 /* ============================================================ */
 function initMl() {
   const uni = window.__universe || [];
-  $('#ml-symbol').innerHTML = uni.slice(0, 30).map((u) => `<option value="${u.symbol}">${u.base}</option>`).join('') || '<option value="BTCUSDT">BTC</option>';
+  $('#ml-symbol').innerHTML = uni.slice(0, 33).map((u) => `<option value="${u.symbol}">${u.base}${u.yahoo ? ' ◆' : ''}</option>`).join('') || '<option value="BTCUSDT">BTC</option>';
+  if (uni.some((u) => u.symbol === 'BTCUSDT')) $('#ml-symbol').value = 'BTCUSDT';
   $('#ml-run').addEventListener('click', runMl);
   runMl();
 }

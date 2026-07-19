@@ -14,7 +14,7 @@ const qArb = require('../services/quant/arb');
 const qOptimizer = require('../services/quant/optimizer');
 const qRisk = require('../services/quant/risk');
 const qStatarb = require('../services/quant/statarb');
-const { quantSignal } = require('../services/quant/signal');
+const { quantSignal, crossoverMonitor } = require('../services/quant/signal');
 const qData = require('../services/quant/data');
 
 const router = express.Router();
@@ -205,11 +205,18 @@ router.post(
 );
 
 // ================= QUANT LAB =================
-// Perp universe (symbol list for pickers)
+// Symbol list for pickers: tradfi (Yahoo-fed: gold/silver/oil) first, then perps
 router.get('/quant/universe', handle(async () => {
   const uni = await qData.getUniverse(110);
-  return uni.map((u) => ({ symbol: u.symbol, base: u.base, sector: u.sector }));
+  const tradfi = Object.entries(qData.TRADFI).map(([symbol, t]) => ({
+    symbol, base: symbol.slice(0, 3), sector: t.sector, yahoo: t.yahoo, name: t.name,
+  }));
+  return [...tradfi, ...uni.map((u) => ({ symbol: u.symbol, base: u.base, sector: u.sector }))];
 }));
+
+// Live SMA crossover monitor (the XAUUSD-study strategy; works on any symbol)
+router.get('/quant/crossover', handle((req) =>
+  crossoverMonitor((req.query.symbol || 'XAUUSD').toUpperCase(), req.query.fast, req.query.slow)));
 
 // Option pricing engine: chain + greeks + timing benchmark
 router.get('/quant/options', handle((req) => qOptions.getChain((req.query.binance || 'BTCUSDT').toUpperCase())));

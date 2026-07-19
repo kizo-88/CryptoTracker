@@ -72,4 +72,68 @@ async function quantSignal(binanceSymbol) {
   });
 }
 
-module.exports = { quantSignal };
+/**
+ * Live SMA fast/slow crossover monitor — the strategy that won the XAUUSD
+ * 3-month study (fast trend-following, long/short, ~1 flip/day on 1h bars).
+ * Pure signal/telemetry: computes the current side, per-leg PnL history, and
+ * whole-window stats net of 1bp/side. Executes nothing.
+ */
+async function crossoverMonitor(symbol, fast = 5, slow = 20) {
+  fast = Math.max(2, Math.min(50, +fast || 5));
+  slow = Math.max(fast + 1, Math.min(200, +slow || 20));
+  return cached(`quant:xm:${symbol}:${fast}:${slow}`, 5 * 60_000, async () => {
+    const candles = await data.hourlyKlines(symbol, 1500);
+    const closes = candles.map((c) => c.close);
+    const n = closes.length;
+    if (n < slow + 20) throw new Error(`not enough hourly history for ${symbol}`);
+
+    const smaArr = (p) => {
+      const out = new Array(n).fill(null);
+      let s = 0;
+      for (let i = 0; i < n; i++) { s += closes[i]; if (i >= p) s -= closes[i - p]; if (i >= p - 1) out[i] = s / p; }
+      return out;
+    };
+    const f = smaArr(fast), sl = smaArr(slow);
+
+    const cost = 1 / 10000; // 1bp per side
+    const flips = [];
+    const rets = [];
+    let pos = 0;
+    for (let i = slow; i < n; i++) {
+      const sig = f[i] > sl[i] ? 1 : -1;
+      if (i < n - 1) rets.push(sig * (closes[i + 1] / closes[i] - 1) - Math.abs(sig - pos) * cost);
+      if (sig !== pos) flips.push({ time: candles[i].time, side: sig === 1 ? 'LONG' : 'SHORT', price: closes[i] });
+      pos = sig;
+    }
+    // per-leg PnL: flip price -> next flip price (last leg marks to the latest close)
+    const legs = flips.map((fl, k) => {
+      const exitP = k + 1 < flips.length ? flips[k + 1].price : closes[n - 1];
+      const dir = fl.side === 'LONG' ? 1 : -1;
+      return { ...fl, pnlPct: +((dir * (exitP / fl.price - 1)) * 100).toFixed(2), open: k === flips.length - 1 };
+    });
+
+    const days = (candles[n - 1].time - candles[0].time) / 86400;
+    const barsPerYear = ((n - slow) / days) * 365;
+    let eq = 1;
+    for (const r of rets) eq *= 1 + r;
+    const sharpe = (mean(rets) / (std(rets) || 1e-9)) * Math.sqrt(barsPerYear);
+    const closedLegs = legs.filter((l) => !l.open);
+    const cur = legs[legs.length - 1];
+
+    return {
+      symbol, fast, slow, bars: n, windowDays: +days.toFixed(0),
+      current: cur ? { side: cur.side, since: cur.time, entry: cur.price, price: closes[n - 1], legPnlPct: cur.pnlPct } : null,
+      stats: {
+        totalPct: +((eq - 1) * 100).toFixed(2),
+        sharpe: +sharpe.toFixed(2),
+        flips: flips.length,
+        hitPct: closedLegs.length ? +((closedLegs.filter((l) => l.pnlPct > 0).length / closedLegs.length) * 100).toFixed(0) : 0,
+      },
+      legs: legs.slice(-12).reverse(),
+      note: 'Fast trend-following works in trending regimes and bleeds in chop — validated on one 3-month bear window only. Signals, not advice; nothing is executed.',
+      at: new Date().toISOString(),
+    };
+  });
+}
+
+module.exports = { quantSignal, crossoverMonitor };
